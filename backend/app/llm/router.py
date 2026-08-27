@@ -378,10 +378,10 @@ def _clean_add_task_name(intent: Intent) -> None:
     name = intent.params.get("name", "")
     if not name:
         return
-    # «на N дней/дня/день» где угодно (не только в конце)
-    cleaned = re.sub(r"\s+на\s+\d+\s+дн[ейя]\s*", " ", name, flags=re.IGNORECASE)
+    # «на N дней/дня/день» где угодно
+    cleaned = re.sub(r"\s+на\s+\d+\s+дн[а-яё]+\s*", " ", name, flags=re.IGNORECASE)
     # «длительностью N дней/дня»
-    cleaned = re.sub(r"\s+длительностью\s+\d+\s+дн[ейя]\s*", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+длительностью\s+\d+\s+дн[а-яё]+\s*", " ", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.strip()
     if cleaned:
         intent.params["name"] = cleaned
