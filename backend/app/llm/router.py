@@ -372,20 +372,16 @@ def build_llm_prompt(text: str, schema: Dict[str, Any], known_names: List[str]) 
 
 
 def _clean_add_task_name(intent: Intent) -> None:
-    """Очищает name от остатков длительности/исполнителя, если LLM не отделила."""
+    """Очищает name от длительности. Gemini часто пишет «Ветер на 3 дня» в name."""
     if intent.action != Action.ADD_TASK:
         return
     name = intent.params.get("name", "")
     if not name:
         return
-    # «на N дней/дня/день» в конце
-    cleaned = re.sub(r"\s+на\s+\d+\s+дн[ейя]\s*$", "", name, flags=re.IGNORECASE)
-    # «на N дня» (родительный)
-    cleaned = re.sub(r"\s+на\s+\d+\s+дня\s*$", "", cleaned, flags=re.IGNORECASE)
-    # «длительностью N дней/дня» в конце
-    cleaned = re.sub(r"\s+длительностью\s+\d+\s+дн[ейя]\s*$", "", cleaned, flags=re.IGNORECASE)
-    # «для Имя» в конце
-    cleaned = re.sub(r"\s+для\s+\S+\s*$", "", cleaned)
+    # «на N дней/дня/день» где угодно (не только в конце)
+    cleaned = re.sub(r"\s+на\s+\d+\s+дн[ейя]\s*", " ", name, flags=re.IGNORECASE)
+    # «длительностью N дней/дня»
+    cleaned = re.sub(r"\s+длительностью\s+\d+\s+дн[ейя]\s*", " ", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.strip()
     if cleaned:
         intent.params["name"] = cleaned
