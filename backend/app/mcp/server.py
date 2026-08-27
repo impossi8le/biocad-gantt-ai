@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, Optional
 
-from mcp.server.fastmcp import MCPServer
+from mcp.server.mcpserver import MCPServer
 
 from ..core.sessions import SessionStore
 from .tools import TOOL_REGISTRY, execute

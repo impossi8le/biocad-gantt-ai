@@ -175,7 +175,7 @@ def _enqueue_pending(session: Session, intent: Intent) -> str:
     session.pending[pid] = {
         "tool": intent.action.value,
         "arguments": _merge_args(intent),
-        "intent": intent,
+        "intent": intent.model_dump(),
     }
     return pid
 
@@ -197,10 +197,10 @@ def _compose_narration(intent: Intent, result: Any) -> str:
     result_str = ""
     if isinstance(result, dict):
         result_str = str(result.get("result") or result.get("error") or "").strip()
-    return f"{label(intent.action)}: {affected or 'план'}{' • ' + result_str if result_str else ''}"
+    return f"{_label(intent.action)}: {affected or 'план'}{' • ' + result_str if result_str else ''}"
 
 
-def label(action: Action) -> str:
+def _label(action: Action) -> str:
     return {
         Action.SHIFT_TASKS: "Перенос задач",
         Action.SET_DEPENDENCY: "Изменение зависимостей",
