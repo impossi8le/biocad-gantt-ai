@@ -201,10 +201,11 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
               const isCrit = t.critical || criticalPath.includes(t.name);
               const long = dur >= 30;
 
-              const left = Math.max(0, tStart - wStart) * barW;
-              const rightEdge = Math.min(tEnd, wEnd) - wStart + 1;
-              const width = Math.max(barW, rightEdge * barW - 2);
-              const visible = tEnd >= wStart && tStart <= wEnd;
+              const left = (tStart - wStart) * barW;
+              const width = Math.max(barW, dur * barW - 2);
+              // Показываем только задачи, полностью влезающие в выбранное окно;
+              // выходящие за его границы (длиннее срока) — скрываем целиком.
+              const visible = tStart >= wStart && tEnd <= wEnd;
               if (!visible) return null;
 
               return (
