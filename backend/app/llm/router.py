@@ -95,9 +95,8 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
     # 3. Добавление задачи
     if "добав" in t or "новую задачу" in t or "новая задача" in t:
-        name = _extract_after(t, "задач")
-        if not name:
-            name = _extract_after(t, "задача")
+        # Имя — весь хвост после «задачу»/«задача» (пропускаем окончание «у»/«а»).
+        name = _name_after_add(t)
         return Intent(action=Action.ADD_TASK,
                       params={"name": name or "Новая задача",
                               "description": "", "assignee": "", "duration_days": 1})
@@ -135,6 +134,23 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
 
 # --- Хелперы для детерминированного разбора -----------------------------------
+
+def _name_after_add(text: str) -> str:
+    """Имя новой задачи — хвост после «задачу»/«задача», без окончания («у»/«а»).
+
+    «добавь задачу Подготовка к демо» → «Подготовка к демо» (не «у»).
+    """
+    t = text
+    marker = "задач"
+    idx = t.find(marker)
+    if idx == -1:
+        return ""
+    tail = t[idx + len(marker):]  # после «задач» (в т.ч. окончание «у»/«а»)
+    # Отбрасываем односимвольное окончание («у»/«а»), если сразу идёт пробел/конец
+    if tail and tail[0] in "уа" and (len(tail) == 1 or tail[1] == " "):
+        tail = tail[1:]
+    return tail.strip()
+
 
 def _extract_offset(text: str) -> Optional[int]:
     m = re.search(r"(\d+)\s*дн", text)
