@@ -8,7 +8,7 @@ interface Props {
   onSelect: (t: Task) => void;
 }
 
-type ScaleMode = "week" | "month" | "quarter";
+type ScaleMode = "day" | "week" | "month" | "quarter";
 
 const HEADER_H = 40; // высота шапки таблицы и шкалы (должны совпадать!)
 
@@ -18,13 +18,14 @@ const MONTH_NAMES = [
 ];
 
 const MODES: { key: ScaleMode; label: string }[] = [
+  { key: "day", label: "День · 1 дн." },
   { key: "week", label: "Неделя · 7 дн." },
   { key: "month", label: "Месяц · 30–31 дн." },
   { key: "quarter", label: "Квартал · 90–92 дн." },
 ];
 
 // px на день — меньше для крупных периодов, чтобы в экран влезало несколько.
-const BAR_W: Record<ScaleMode, number> = { week: 14, month: 9, quarter: 3 };
+const BAR_W: Record<ScaleMode, number> = { day: 22, week: 14, month: 9, quarter: 3 };
 
 /** Дней в месяце: «нечётный» месяц → 31, «чётный» → 30 (месяц 1 = январь). */
 function monthDays(month0: number): number {
@@ -32,6 +33,7 @@ function monthDays(month0: number): number {
 }
 
 function periodSpan(mode: ScaleMode, month0: number): number {
+  if (mode === "day") return 1;
   if (mode === "week") return 7;
   if (mode === "month") return monthDays(month0);
   // квартал = сумма трёх месяцев (в среднем 90–92)
@@ -48,7 +50,9 @@ function buildPeriods(totalDays: number, mode: ScaleMode) {
   while (day <= totalDays) {
     const span = Math.min(periodSpan(mode, month0), totalDays - day + 1);
     let label: string;
-    if (mode === "week") {
+    if (mode === "day") {
+      label = `${day}`;
+    } else if (mode === "week") {
       label = `нед ${Math.floor((day - 1) / 7) + 1}`;
     } else if (mode === "month") {
       label = month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0];
@@ -129,7 +133,7 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
                   key={i}
                   className="flex items-end justify-start text-[10px] text-[#737373] border-l border-[#e5e5e5] pl-1 pb-0.5 overflow-hidden"
                   style={{ width: p.span * barW }}
-                  title={`дни ${p.start}–${p.start + p.span - 1}`}
+                  title={p.span === 1 ? `день ${p.start}` : `дни ${p.start}–${p.start + p.span - 1}`}
                 >
                   {p.label}
                 </div>
