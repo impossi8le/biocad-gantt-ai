@@ -25,7 +25,7 @@ const MODES: { key: ScaleMode; label: string }[] = [
 ];
 
 // px на день — меньше для крупных периодов, чтобы в экран влезало несколько.
-const BAR_W: Record<ScaleMode, number> = { day: 22, week: 14, month: 9, quarter: 3 };
+const BAR_W: Record<ScaleMode, number> = { day: 22, week: 22, month: 9, quarter: 3 };
 
 /** Дней в месяце: «нечётный» месяц → 31, «чётный» → 30 (месяц 1 = январь). */
 function monthDays(month0: number): number {
@@ -40,7 +40,7 @@ function periodSpan(mode: ScaleMode, month0: number): number {
   return monthDays(month0) + monthDays((month0 + 1) % 12) + monthDays((month0 + 2) % 12);
 }
 
-/** Разбивает последовательность дней на периоды выбранного масштаба. */
+/** Разбивает полную шкалу на периоды (кроме режима «Неделя» — там окно). */
 function buildPeriods(totalDays: number, mode: ScaleMode) {
   const periods: { start: number; label: string; span: number }[] = [];
   let day = 1;
@@ -67,24 +67,74 @@ function buildPeriods(totalDays: number, mode: ScaleMode) {
   return periods;
 }
 
-/** Гант: единая сетка — левая колонка задач + шкала (годы/месяцы) + бары по дням. */
+/** Дни выбранной недели (для детального просмотра в режиме «Неделя»). */
+function weekPeriods(totalDays: number, week: number) {
+  const windowStart = (week - 1) * 7 + 1;
+  const windowEnd = Math.min(week * 7, totalDays);
+  const periods: { start: number; label: string; span: number }[] = [];
+  for (let d = windowStart; d <= windowEnd; d++) {
+    periods.push({ start: d, label: `${d}`, span: 1 });
+  }
+  return { periods, windowStart, windowEnd };
+}
+
+/** Гант: единая сетка — левая колонка задач + шкала + бары по дням. */
 export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }: Props) {
   const [scale, setScale] = useState<ScaleMode>("month");
+  const [week, setWeek] = useState(1);
   const days = Math.max(1, totalDays);
+  const totalWeeks = Math.ceil(days / 7);
+  const curWeek = Math.min(Math.max(1, week), totalWeeks);
+
   const barW = BAR_W[scale];
-  const periods = buildPeriods(days, scale);
+  // Для «Недели» — окно из 7 дней выбранной недели.
+  const isWeekView = scale === "week";
+  const { periods, windowStart, windowEnd } = isWeekView
+    ? weekPeriods(days, curWeek)
+    : { periods: buildPeriods(days, scale), windowStart: 1, windowEnd: days };
+  const scaleWidth = isWeekView ? (windowEnd - windowStart + 1) * barW + 8 : days * barW + 8;
+
+  const switchMode = (m: ScaleMode) => {
+    setScale(m);
+    if (m === "week") setWeek(1);
+  };
 
   return (
     <div className="min-w-full">
-      {/* Переключатель масштаба */}
+      {/* Переключатель масштаба + навигация по неделям */}
       <div className="flex items-center justify-between mb-3">
-        <div className="text-xs text-[#737373] font-medium">Масштаб шкалы</div>
+        <div className="text-xs text-[#737373] font-medium">
+          Масштаб шкалы
+          {isWeekView && (
+            <span className="ml-2 inline-flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setWeek(curWeek - 1)}
+                disabled={curWeek <= 1}
+                className="w-6 h-6 text-[11px] rounded border border-[#e5e5e5] bg-white text-[#0a0a0a] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ‹
+              </button>
+              <span className="text-[11px] text-[#0a0a0a]">
+                Неделя {curWeek} из {totalWeeks} · дни {windowStart}–{windowEnd}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeek(curWeek + 1)}
+                disabled={curWeek >= totalWeeks}
+                className="w-6 h-6 text-[11px] rounded border border-[#e5e5e5] bg-white text-[#0a0a0a] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ›
+              </button>
+            </span>
+          )}
+        </div>
         <div className="flex gap-1">
           {MODES.map((m) => (
             <button
               key={m.key}
               type="button"
-              onClick={() => setScale(m.key)}
+              onClick={() => switchMode(m.key)}
               className={`px-2 py-1 text-[11px] rounded border cursor-pointer transition-colors ${
                 scale === m.key
                   ? "bg-[#0a0a0a] text-white border-[#0a0a0a]"
@@ -125,8 +175,8 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
 
         {/* ── ОБЛАСТЬ ШКАЛЫ + БАРЫ ── */}
         <div className="overflow-x-auto">
-          <div style={{ width: days * barW + 8 }} className="relative">
-            {/* Шкала: периоды выбранного масштаба */}
+          <div style={{ width: scaleWidth }} className="relative">
+            {/* Шкала */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
               {periods.map((p, i) => (
                 <div
@@ -141,20 +191,26 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
             </div>
             {/* Строки баров */}
             {tasks.map((t) => {
-              const start = t.start_day ? t.start_day - 1 : 0;
+              const tStart = t.start_day ?? 1;
+              const tEnd = t.end_day ?? tStart + (t.duration_days || 1) - 1;
               const dur = Math.max(1, t.duration_days);
-              const left = start * barW;
-              const width = Math.max(barW, dur * barW - 2);
               const isCrit = t.critical || criticalPath.includes(t.name);
-              // Если задача длиннее месяца (30+ дней) — помечаем значком
               const long = dur >= 30;
+
+              // Позиция относительно начала видимого окна.
+              const left = Math.max(0, tStart - windowStart) * barW;
+              const rightEdge = Math.min(tEnd, windowEnd) - windowStart + 1;
+              const width = Math.max(barW, rightEdge * barW - 2);
+              const visible = tEnd >= windowStart && tStart <= windowEnd;
+              if (!visible) return null;
+
               return (
                 <div key={t.id} className="gantt-row relative" style={{ height: 34 }}>
                   <div
                     className={`gantt-bar ${isCrit ? "critical" : ""}`}
                     style={{ left, width, fontSize: width < 60 ? 9 : width < 110 ? 10 : 11 }}
                     onClick={() => onSelect(t)}
-                    title={`${t.name} · дн. ${t.start_day ?? "?"}–${t.end_day ?? "?"}${long ? " · >1 мес" : ""}`}
+                    title={`${t.name} · дн. ${tStart}–${tEnd}${long ? " · >1 мес" : ""}`}
                   >
                     <span className="gantt-bar-label">{t.name}</span>
                     {long && <span className="gantt-bar-badge" title="дольше месяца">↗</span>}
