@@ -1,171 +1,323 @@
-# Архитектура и план реализации — AI-агент «Научный помощник» (BIOCAD)
+# Архитектура и план реализации — AI-native редактор проектного плана (Гант + чат)
+
+> Было: PDF/RAG «Научный помощник» (неверная трактовка ТЗ). **Исправлено** под фактическое ТЗ из `docs/TZ_TEXT.txt`: интерактивная диаграмма Ганта + чат массового редактирования плана + Excel import/export + MCP + LLM.
+> Версии исследованы tavily2 на 2026-08-27. Реализация **не начата** — план на согласовании.
+
+---
 
 ## 1. Резюме решения
 
-Локальное single-user fullstack-приложение на Docker Compose из 4 контейнеров (db, qdrant, backend, frontend+nginx), где RAG-конвейер построен на прямых вызовах LiteLLM + qdrant-client с тонким слоем LangGraph, а не на тяжёлом LangChain. PDF индексируются in-process асинхронными фоновыми задачами (парсинг pypdf, чанкинг, эмбеддинги в Qdrant), статусы и метаданные в PostgreSQL. OpenAI text-embedding-3-small (dim=1536) основной эмбеддер, стриминг через SSE с отдельным событием sources, сессии в PG с X-User-Id. UI строго по DESIGN.md (монохром shadcn/ui, Geist, радиусы 18/24, Tailwind v4).
+Одностраничное (single-view) демо-приложение: **диаграмма Ганта — центральный элемент**. При открытии сразу виден Гант с закешированной тестовой выборкой задач. Пользователь может загрузить свой `.xlsx` (колонки `задача,описание,исполнитель,длительность,предшественники`), править план массово через чат на естественном языке (перенос задач, зависимости, добавление, перераспределение исполнителей), кликом открывать модаль задачи, и экспортировать план обратно в Excel.
 
-## 2. Выбор стека (версии из §8 REQUIREMENTS.md)
+Ключевые архитектурные решения:
 
-### Backend — Python 3.12.14
-Python 3.12.14; FastAPI 0.141.1; Uvicorn 0.52.4; Pydantic 2.13.4; SQLAlchemy 2.0.52; asyncpg 0.31.0; Alembic 1.19.1; LiteLLM 1.98.0; langchain-text-splitters 1.1.2; qdrant-client 1.19.0; sentence-transformers 5.1.x (+transformers 4.x); pypdf 6.16.2; pdfplumber 0.11.10; pytest 9.1.1; pytest-asyncio 1.4.0; httpx 0.28.1; python-multipart 0.0.32.
+1. **Единый процесс для демо (FastAPI)**. LLM-слой (LiteLLM) не трогает дата-модель напрямую — он работает как **MCP-клиент** (SDK v2, единый `Client`), вызывающий инструменты `get_schema/get_task/shift_tasks/set_dependency/add_task/reassign/update_field/remove_tasks/compute/export`. MCP-сервер (`MCPServer`) — in-process изолированный модуль, не знающий про REST; на проде выносится в отдельный контейнер (streamable-HTTP/SSE) без смены контрактов.
+2. **Модель плана — in-memory**: список задач (id, задача, описание, исполнитель, длительность, предшественники) + **движок расписания** (forward pass по зависимостям → даты старта/конца, критический путь). Стек версий-снапшотов (undo, cap 20), очередь pending-подтверждений для деструктивных операций, TTL сессии 30 мин. БД нет — осознанный техдолг (в roadmap).
+3. **Приватность**: в LLM уходит компактное представление плана (названия+даты+исполнители) и точечные результаты инструментов, не сырой файл; при загрузке значения читаются `openpyxl data_only=True` (без формул/макросов).
+4. **Безопасность**: все операции — whitelist-инструменты; `compute` — только фиксированные агрегации pandas, без `eval`/`exec`; циклы зависимостей отклоняются; CORS — только фронтенд-origin.
+5. **Политика подтверждений — правило бэкенда**: `shift_tasks` (массовый), `remove_tasks`, `update_field` по всей колонке → `pending` + `ConfirmModal`; единичная правка — сразу.
+6. **Two-pass LLM**: (1) не-стриминговый structured-output → `Intent {action,targets,params,explanation}` (pydantic, 1 retry при некорректном JSON); (2) стриминговый вызов → человекочитаемая наррация по-русски (SSE). Ошибки парсинга → уточнение у пользователя.
+7. **Мгновенное отражение правок**: после каждого MCP-вызова движок пересчитывает расписание, и по SSE летит событие `update` с положением задач → Гант перерисовывается без перезагрузки.
+8. **UI на русском**, монохром по `DESIGN.md` (Geist, радиусы 18/24, красный — только destructive): слева Гант (центр), справа чат, сверху тулбар (загрузка/undo/versions/экспорт), модаль задачи, ConfirmModal.
 
-### Frontend — Node 24 LTS
-React 19.2.8; TypeScript ~5.6.x; Vite 8.2.2 + @vitejs/plugin-react 6.1.0; react-router-dom 7.18.2; Tailwind CSS 4.3.3; shadcn 4.19.0; lucide-react 1.34.0; geist 1.7.2; pdfjs-dist (последняя стабильная); axios 1.20.0.
+Deliverables (ТЗ): README (запуск, архитектура, решения, раздел «Как использованы AI-ассистенты»), развёрнутая ссылка (Render/Fly.io/VM), демо-gif «загрузка Excel → правка чатом → экспорт», пример Excel в `samples/`, `ROADMAP_TO_PRODUCTION.md`, git-репозиторий.
 
-### Инфраструктура
-postgres:16.15-alpine; qdrant/qdrant:v1.19.0; python:3.12-slim; node:24-alpine (build-stage); nginx:1.27-alpine (статика + proxy /api, SSE-буферизация отключена).
+---
 
-Ключевые решения: 1) прямые LiteLLM + qdrant-client вместо LangChain-цепочек (R-3); 2) Python 3.12 вместо 3.10 (EOL, §8.4); 3) Tailwind v4 под DESIGN.md (@theme, без tailwind.config.js); 4) Qdrant вместо pgvector/Chroma/Weaviate: встроенный фильтр по payload для подмножества статей, поддержка 1536-мерных векторов, HNSW + score_threshold; pgvector перегружал бы PG, Chroma слаб в фильтрах, Weaviate избыточен.
+## 2. Стек технологий и структура репозитория
 
-## 3. Решения по открытым вопросам §9
+### 2.1 Обоснование выбора стека
 
-1. Эмбеддинги: OpenAI text-embedding-3-small (dim=1536) основной; локальный sentence-transformers 5.1.x optional fallback (EMBEDDINGS_PROVIDER=openai|local, torch отдельным слоем Dockerfile).
-2. Фоновые задачи: in-process asyncio (BackgroundTasks + Semaphore(2)). Redis/воркер не нужны single-user.
-3. LangGraph: минимальный граф retrieve→generate (2 узла), без сложного StateGraph.
-4. Сессии: только PostgreSQL.
-5. Multi-user хук: X-User-Id header, user_id в таблицах, без аутентификации.
-6. Sources: отдельное SSE-событие sources после done.
-7. OCR: вне MVP, статус failed с сообщением для скан-PDF.
-8. UI: только RU, PDF могут быть EN.
-9. Превью PDF: pdf.js (pdfjs-dist) на frontend, без poppler.
-10. Миграции: Alembic auto-migrate при старте (alembic upgrade head в entrypoint).
-11. top-terms: key_terms из саммари primary, fallback online TF-IDF по чанкам.
-12. Rate limiting: не требуется (single-user).
+| Компонент | Выбор | Почему / trade-off |
+|---|---|---|
+| Frontend | React + Vite 8 + TypeScript ~5.6 | Быстрая сборка, типизированные контракты, зрелость экосистемы. |
+| Диаграмма Ганта | **собственный компонент** (React + CSS grid, absolute-бары) | ТЗ — интерактив + монохром по DESIGN.md; лёгкий канvas без тяжёлых библиотек, интерактив на обычном стейте. Fallback — готовая библиотека при необходимости. |
+| Backend | FastAPI 0.141.1 | Async, SSE из коробки, pydantic v2. |
+| MCP | MCP Python SDK **2.0.0** | Прямое требование ТЗ; v2 (28.07.2026): `MCPServer` + единый `Client`, `@server.tool()`. |
+| Excel | openpyxl 3.1.x + pandas 2.2.x | Чтение/запись `.xlsx` (data_only, без формул) + компактная модель плана и агрегации. |
+| LLM | LiteLLM 1.98.0 | Единый интерфейс к OpenAI/Anthropic/Ollama, стриминг, смена модели через env. |
+| Сессии | in-memory dict + asyncio-lock + TTL-sweep | Для demo достаточно; Redis — техдолг. |
+| Деплой | Docker Compose (backend + frontend через nginx) **и** развёрнутая ссылка (Render/Fly.io/VM) | Обе цели из ТЗ. |
 
-## 4. Структура репозитория
-
-```
-BIOCAD AI TestWork/
-├── docs/ (REQUIREMENTS.md, ARCHITECTURE_PLAN.md, DESIGN.md)
-├── samples/ (FR-41, 3-5 open-access PDF)
-├── backend/
-│   ├── Dockerfile, requirements.txt, pyproject.toml, alembic.ini
-│   ├── alembic/ (env.py, versions/)
-│   ├── app/
-│   │   ├── main.py, core/ (config, logging), db/ (base, session)
-│   │   ├── models.py, schemas.py
-│   │   ├── repositories/ (articles, chat, analytics, summary)
-│   │   ├── services/ (pdf, chunker, embedding, qdrant, indexing, llm, rag, summary)
-│   │   ├── api/ (deps, routes/ articles, chat, summary, analytics, health)
-│   │   └── utils/error_handlers.py
-│   ├── tests/ (conftest, ingestion, rag, summary, analytics, health)
-│   └── data/ (mount ./data/uploads)
-├── frontend/
-│   ├── Dockerfile, package.json, tsconfig.json, vite.config.ts, index.html
-│   └── src/
-│       ├── main.tsx, App.tsx, routes/ (Chat, Library, Summary, Analytics)
-│       ├── components/ (ui/ shadcn, layout/AppShell, chat/, library/, summary/, analytics/, shared/)
-│       ├── lib/ (api, sse, pdfPreview), hooks/ (useSSE, useCitations, useAnalytics)
-│       ├── styles/globals.css (@theme из DESIGN.md), types.ts
-├── nginx/nginx.conf
-├── docker-compose.yml, .env.example, .gitattributes, README.md
-```
-
-## 5. Схема БД (PostgreSQL)
-
-Все таблицы имеют user_id (TEXT NOT NULL, default 'local') - хук multi-user. UUID PK.
-
-articles: id, user_id, sha256 CHAR(64) UNIQUE(user_id,sha256), filename, stored_path, status ('uploaded/parsing/chunking/embedding/indexed/failed'), title nullable, authors TEXT[] nullable, year SMALLINT nullable, page_count INT nullable, file_size BIGINT, token_count INT nullable, uploaded_at, indexed_at, created_at, updated_at. Индексы: sha, status, uploaded_at, user_id.
-
-chunks (метаданные; векторы в Qdrant, vector_id == chunks.id): id UUID PK, article_id FK->articles ON DELETE CASCADE, chunk_idx INT, page_start, page_end, text TEXT, token_count INT, vector_id TEXT. Индексы: UNIQUE(article_id, chunk_idx), idx_article_id.
-
-summaries: id, article_id FK CASCADE, objective, methods, results, conclusions TEXT, key_terms TEXT[], generated_at, fresh BOOLEAN.
-
-chat_sessions: id, user_id, title, created_at, updated_at.
-
-chat_messages: id, session_id FK CASCADE, role CHECK in ('user','assistant'), content TEXT, status default 'complete', created_at.
-
-chat_message_sources: id, message_id FK CASCADE, article_id FK, chunk_id FK, page INT, snippet TEXT, score REAL.
-
-analytics - нет таблицы, прямые SQL-агрегации (FR-22..25). pg_trgm GIN-индекс на articles.title для поиска (FR-8).
-
-## 6. Схема Qdrant
-
-Коллекция articles_chunks; vectors size=1536 distance=Cosine; payload {article_id, page, chunk_idx}; vector_id UUID == chunks.id в PG. Создание на startup. Retrieval: qdrant.search(embedding, filter=FieldCondition('article_id', MatchAny(ids)), limit=top_k, score_threshold 0.3). Delete по фильтру article_id.
-
-## 7. API-контракты
-
-Все под /api. Заголовок X-User-Id (default 'local').
-
-POST /api/articles/upload (multipart files[] 1-10 PDF) -> [{article_id, filename, status, existing?}] | 400 не-PDF, 413 >50MB, 409 dup.
-GET /api/articles (q?, status?, from?, to?) -> список статей.
-GET /api/articles/{id} -> статья | 404.
-DELETE /api/articles/{id} -> 204 (каскад Qdrant+PG) | 404.
-GET /api/articles/{id}/summary -> {objective, methods, results, conclusions, key_terms[], generated_at, fresh} | 404, 409 (не indexed).
-POST /api/articles/{id}/summary/regenerate -> summary | 503.
-POST /api/chat/sessions {title?} -> {session_id}.
-GET /api/chat/sessions -> list.
-POST /api/chat/stream {question, session_id?, article_ids?, top_k?=6} -> SSE | 400 пустая коллекция, 503.
-GET /api/analytics/overview -> {articles_total, articles_indexed, articles_failed, chunks_total, total_bytes, avg_pages}.
-GET /api/analytics/timeline?days=30 -> [{date, uploads_count}].
-GET /api/analytics/top-terms?limit=10 -> [{term, frequency}].
-GET /api/analytics/by-year -> [{year, count}].
-GET /api/healthz -> {status, db, qdrant, llm, version} | 503.
-
-SSE-формат (POST /api/chat/stream):
-event: meta      data: {"message_id":"...","session_id":"..."}
-event: token     data: {"text":"..."}
-event: done      data: {"role":"assistant","message_id":"..."}
-event: sources   data: {"sources":[{"chunk_id","article_id","title","page","snippet","score"}]}
-event: error     data: {"code":"LLM_UNAVAILABLE","message":"..."}
-
-SSE-заголовки: text/event-stream, Cache-Control: no-cache, X-Accel-Buffering: no. sources - отдельное событие ПОСЛЕ done.
-
-## 8. Архитектурная ASCII-диаграмма
+### 2.2 Дерево репозитория
 
 ```
-                       ┌──────────────────────────────┐
-  Browser (localhost)  │  React 19 + shadcn/ui + Tailwind v4
-                       └──────────────┬───────────────┘
-                              HTTP /api · SSE /api/chat/stream
-                                     ▼
-                 ┌───────────────────────────────┐
-                 │  nginx:1.27-alpine            │
-                 │  static / -> dist; proxy /api │
-                 │  SSE: proxy_buffering off     │
-                 └──────────────┬────────────────┘
-                                │
-                 ┌──────────────▼───────────────┐   ┌──────────────────────┐
-                 │  fastapi:8000 (python:3.12)  │   │  PostgreSQL 16       │
-                 │  routes -> services          │◄──┤  articles, chunks,   │
-                 │  Chat/Summary/Analytics/     │   │  summaries, sessions,│
-                 │  Upload (SSE)                │   │  messages, sources   │
-                 │  ─────────────────────────   │   └──────────────────────┘
-                 │  asyncio background tasks    │
-                 │  (indexing: pypdf -> chunk ->│
-                 │   embed -> Qdrant + PG)      │
-                 └──────────────┬───────────────┘
-                                │ qdrant-client
-                 ┌──────────────▼───────────────┐
-                 │  Qdrant v1.19                │  collection: articles_chunks
-                 │  vectors 1536 · Cosine       │  payload: article_id,page,chunk_idx
-                 └──────────────────────────────┘
+biocad-gantt-ai/                      (имя репо из ссылки git)
+├─ README.md                          # запуск (local + развёрнутый), архитектура, решения,
+│                                     # раздел «Как использованы AI-ассистенты»
+├─ ROADMAP_TO_PRODUCTION.md           # обязательный deliverable
+├─ docker-compose.yml                 # services: backend, frontend (nginx)
+├─ nginx/nginx.conf                   # статика + proxy /api, SSE off-buffer
+├─ .env.example                       # LLM_MODEL, ключ, CORS_ORIGINS, SESSION_TTL, лимиты
+├─ .gitignore                         # не пускает .env*, node_modules, .venv
+├─ docs/                              # REQUIREMENTS.md, ARCHITECTURE_PLAN.md (данный), DESIGN.md
+├─ samples/проект_пример.xlsx         # пример Excel для теста (та же возможная форма)
+├─ demo/demo.gif                      # «загрузка Excel → правка чатом → экспорт»
+├─ backend/
+│  ├─ Dockerfile, pyproject.toml
+│  ├─ app/
+│  │  ├─ main.py                      # create_app, lifespan (MCP + TTL-sweep), CORS
+│  │  ├─ config.py                    # pydantic-settings
+│  │  ├─ seed.py                      # закешированная тестовая выборка задач (для US-1)
+│  │  ├─ api/
+│  │  │  ├─ routes_session.py         # POST /api/session, state, tasks, versions, undo, confirm/cancel
+│  │  │  ├─ routes_chat.py            # POST .../chat/stream (SSE)
+│  │  │  ├─ routes_upload.py          # POST .../upload
+│  │  │  └─ routes_export.py          # GET .../export
+│  │  ├─ core/
+│  │  │  ├─ sessions.py               # SessionStore: dict, TTL-sweep, per-session asyncio.Lock
+│  │  │  ├─ plan.py                   # Session-модель плана (задачи, предшественники)
+│  │  │  ├─ scheduler.py              # forward pass + критический путь + циклы (ядро)
+│  │  │  ├─ import_export.py          # openpyxl: read (data_only) / write, csv, sanitize
+│  │  │  ├─ versions.py               # снапшоты-undo, cap=20
+│  │  │  └─ policy.py                 # классификация деструктивных/массовых
+│  │  ├─ llm/
+│  │  │  ├─ router.py                 # LiteLLM completion/stream, retry, timeout
+│  │  │  ├─ intents.py                # pydantic Intent + instructions (structured output)
+│  │  │  ├─ context.py                # компакт-представление плана + history + tool-результаты
+│  │  │  └─ agent.py                  # цикл: intent → policy → MCP-вызов → наррация (SSE)
+│  │  └─ mcp/
+│  │     ├─ server.py                 # MCPServer (v2), регистрация инструментов
+│  │     └─ tools.py                  # 9 инструментов через SessionStore + scheduler
+│  └─ tests/                          # pytest: scheduler, import/export, tools, policy, versions, chat
+└─ frontend/
+   ├─ Dockerfile (multi-stage: node build → nginx), package.json, vite.config.ts, tsconfig.json
+   └─ src/
+      ├─ main.tsx, App.tsx            # layout: GanttChart | ChatPanel | Toolbar
+      ├─ api/client.ts                # fetch + fetch-стрим чтение SSE
+      ├─ types/models.ts              # Task, PlanState, Intent, ConfirmPayload
+      ├─ store/session.ts             # zustand: sessionId, tasks, versions, pending
+      ├─ lib/iso.ts                   # DATE<->DAY utils
+      └─ components/
+         ├─ GanttChart.tsx          # лента времени, бары, стрелки, клик → TaskModal
+         ├─ TaskModal.tsx          # детали задачи (состав решаем сами)
+         ├─ ChatPanel.tsx            # сообщения, стриминг, markdown
+         ├─ ConfirmModal.tsx          # подтверждение массовых
+         └─ Toolbar.tsx               # upload, undo, versions, export
 ```
+
+Границы: `backend/app/mcp/` не импортирует FastAPI и не знает про REST — только `SessionStore`/`scheduler` по интерфейсу → выносимо в отдельный процесс. `backend/app/llm/` не трогает план напрямую — только через MCP-клиент. LLM-слой — первый реальный потребитель MCP-контрактов (self-host проверяет контракты).
+
+---
+
+## 3. Архитектура и data-flow
+
+### 3.1 Компоненты
+
+```
+        React SPA (Vite)                     FastAPI app (единый процесс, demo)
+ ┌──────────────┐  REST + SSE   ┌─────────────────────────────────────────────────┐
+ │ GanttChart   │ ────────────▶  │ api/routes_*                                    │
+ │ ChatPanel    │                │   │  routes_session (state,upload,confirm,undo) │
+ │ ConfirmModal │                │   │  routes_chat (SSE)  · import/export          │
+ │ TaskModal    │ ◀────────────  │   ▼                                             │
+ └──────────────┘                │  llm/ agent (2-pass intent + наррация)          │
+        ▲                        │   │  router.py (LiteLLM)                        │
+        │ state+update (SSE)     │   ▼                                             │
+        │                        │  MCP Client (v2) ◀──▶ MCP Server (MCPServer v2) │
+        │                        │  │  tools: get_schema/get_task/shift_tasks/     │
+        │                        │  │  set_dependency/add_task/reassign/           │
+        │                        │  │  update_field/remove_tasks/compute/export    │
+        │                        │  ▼                                              │
+        │                        │  SessionStore (задачи, versions, pending, TTL)  │
+        │                        │  Scheduler (forward pass, каскад, critical)     │
+        │                        │  import/export (openpyxl data_only, sanitize)   │
+        │                        └────────────────────────────────────────────────┘
+        │                                          │ LLM HTTP (LiteLLM)
+        │                                          ▼
+        │                              Внешний LLM API (ключ из env) / local Ollama
+```
+
+### 3.2 Как FastAPI взаимодействует с MCP (in-process, изолированный модуль)
+
+- `app/mcp/server.py` создаёт `MCPServer` (SDK v2) `"gantt_plan"`; инструменты — декоратор `@server.tool()`.
+- `app/llm/agent.py` создаёт MCP-`Client` v2, подключается к серверу по in-memory транспорту, вызывает `client.call_tool("add_task", {...})`.
+- `SessionStore` + `scheduler` инжектятся в инструменты при регистрации; MCP-слой не знает про REST.
+
+Trade-off: один процесс и контейнер, нет сетевой хрупкости, общий state без пересылки DataFrame, простой дебаг. Минус: MCP не отдельно разворачиваемая единица. Прод-переход (в `mcp/README.md` / roadmap): тот же `server.py` запускается standalone с streamable-HTTP/SSE транспортом, FastAPI держит `Client` по сети; инструменты и контракты не меняются.
+
+### 3.3 Data-flow полного сценария «загрузка Excel → правка чатом → экспорт»
+
+1. **Открытие + тестовые данные.** `POST /api/session` → создаёт сессию, `seed.py` заваливает кешированную выборку задач. `GET /api/session/{id}/state` → схема + задачи (с вычисленными датами) + критический путь. Frontend рисует Гант.
+2. **Загрузка Excel.** `POST /api/session/{id}/upload` (multipart .xlsx/.csv). `openpyxl data_only=True` → значения без формул/макросов; сопоставление колонок `задача/описание/исполнитель/длительность/предшественники`; `scheduler` считает даты; задачи заменяются. Ошибки (нет колонки, пустой лист) → 400 с именем.
+3. **Чат на естественном языке.** `POST /api/session/{id}/chat/stream` (SSE). Сбор контекста (компактное представление плана, история, последние tool-результаты) → **первый вызов LLM** — strict structured output → `{action:"shift_tasks", targets:{…}, params:{offset_days:14}, explanation:"…"}`.
+4. **Policy.** Классификация: единичное/массовое/деструктивное.
+5. **Выполнение через MCP.** Агент вызывает инструмент; инструмент мутирует план через `SessionStore` + `scheduler`. Пересчитывает расписание, критический путь; возвращает `{ok, affected, diff}`. Движок валидирует циклы (отклонение) и каскадно двигает зависимых.
+6. **Мгновенное обновление.** Сразу после мутации агент шлёт SSE-событие `update` (актуальные задачи) → **Гант перерисовывается**.
+7. **Наррация.** Второй вызов LLM (стриминг) → объяснение по-русски (SSE `delta`). Если `pending` — фронт показывает `ConfirmModal`, по `POST /confirm` применяется тот же отложенный MCP-вызов (outbox), по `cancel` — отменяется.
+8. **Уточнения.** Intent не распознан → только read-инструменты, или запрос уточнения; некорректный JSON → 1 retry → честный ответ «уточните».
+9. **Undo.** `POST /api/session/{id}/undo` — возврат версии из стека; `versions` список в тулбаре.
+10. **Экспорт.** `GET /api/session/{id}/export?format=xlsx|csv` — `export.py` пишет задачи + вычисленные даты, sanitize имени, Content-Disposition.
+
+Сквозной принцип: **LLM не получает весь файл целиком**; любой доступ — через точечные инструменты; большие операции всегда видны пользователю через pending/diff.
+
+---
+
+## 4. Модель состояния сессии
+
+### 4.1 Сущности (`core/plan.py`, `core/versions.py`)
+
+```python
+class Task:
+    id: str
+    name: str            # «задача»
+    description: str     # «описание»
+    assignee: str        # «исполнитель»
+    duration_days: int   # «длительность»
+    predecessors: list[str]  # «предшественники» — имена задач
+    # вычислено scheduler:
+    start_day: int       # 1-based рабочий день проекта
+    end_day: int
+    critical: bool
+
+class PlanSchema:
+    columns: ["задача","описание","исполнитель","длительность","предшественники"]
+    n_tasks: int
+    total_days: int
+    critical_path: list[str]
+    source_filename: str
+
+class Intent:    # то же JSON-schema для LLM (см. §7)
+    action: Literal["get_schema","get_task","shift_tasks","set_dependency",
+                    "add_task","reassign","update_field","remove_tasks",
+                    "compute","undo","help"]
+    targets: dict     # {tasks:[...]} | {task}| {column:...}
+    params: dict      # {offset_days,value,assignee,format,...}
+    explanation: str
+
+class PendingOp:
+    id: str; tool: str; arguments: dict; diff: str; preview: list; created_at; ttl
+
+class Version:        # снапшот плана для undo
+    id:int; label:str; tasks_snapshot: list[Task]; created_at
+```
+
+### 4.2 Где хранится (`core/sessions.py`)
+
+`SessionStore`: `dict[Session]`, глобальный `asyncio.Lock`, `ttl_seconds=1800`, `max_sessions=200` (LRU-evict старейших). У каждой сессии свой `asyncio.Lock` — съёмка консистентности на запись. TTL-sweep — фоновый task в `lifespan` каждые 60 c. При мутациях: `versions.push(snapshot)` перед изменением; стек 20, старые срезаются. `undo`: вернуть `tasks_snapshot` и пересчитать расписание.
+
+Особые случаи: файл >100 000 ячеек → отклонение; пустой лист → 400; несколько листов → первый активный (roadmap: выбор листа).
+
+---
+
+## 5. REST API (без MCP)
+
+Префикс `/api`. Ответ: `{ok, data|error:{code,message}}`.
+
+| Метод | Путь | Тело / Query | Ответ |
+|---|---|---|---|
+| `POST` | `/api/session` | — | `201 {session_id, state}` (seed) |
+| `GET` | `/api/session/{id}/state` | — | `{schema, tasks, plan, pending, version_head}` |
+| `POST` | `/api/session/{id}/upload` | multipart .xlsx/.csv ≤20MB | `200 {state}` / 400, 413 |
+| `POST` | `/api/session/{id}/chat/stream` | `{message}` | SSE |
+| `POST` | `/api/session/{id}/confirm` | `{pending_id}` | `{applied,diff,state}` / 409 |
+| `POST` | `/api/session/{id}/cancel` | `{pending_id}` | `{cancelled:true}` |
+| `POST` | `/api/session/{id}/undo` | — | `{version_head,label,diff}` / 409 |
+| `GET` | `/api/session/{id}/versions` | — | `{versions[], head}` |
+| `GET` | `/api/session/{id}/export` | `?format=xlsx\|csv` | binary, Content-Disposition / 400 |
+| `GET` | `/api/health` | — | `{status:"ok"}` |
+
+### SSE-протокол `/chat/stream`
+
+```
+event: intent      data: {"action":"add_task","targets":{},"params":{...},"explanation":"…"}
+event: update      data: {"tasks":[...],"plan":{..., "critical_path":["…"]}}   # гант перерисуется
+event: delta       data: {"text":"Готово: добавлена задача «Тестирование»…"}    # повторы
+event: pending     data: {"pending_id":"…","tool":"remove_tasks","preview":[...],"diff":"…"}
+event: done        data: {"status":"applied"|"pending"|"help"|"error","reason":"…"}
+```
+
+Порядок: `intent` → (при успехе) `update` → `delta`* → `pending`? → `done`. Frontend читает через `fetch` + `ReadableStream` (POST → не EventSource).
+
+---
+
+## 6. Схема MCP-инструментов (9)
+
+Все инструменты получают `session_id`; вход/выход в JSON-нотации. `scheduler` вызывается после каждой правки.
+
+### 6.1 `get_schema`
+Вход `{session_id}`. Выход `{ok, schema:{n_tasks,total_days,critical_path,columns,header_row}}`. Read-only, «словарь языка» для LLM (имена задач доступны).
+
+### 6.2 `get_task`
+Вход `{session_id, task: str, detail?: "compact"|"full"}`. Выход `{ok, task|None}`. Read-only, точечное чтение (для контекста и проверки diff).
+
+### 6.3 `shift_tasks`
+Вход `{session_id, targets: {tasks: all|[...names], mode: offset|to_date, value: int|"2026-09-01"}}`. Деструктивное/массовое → **pending** (+ каскад через scheduler). Выход (pending): `{applied:false, status:"pending_confirmation", pending_id, diff:"Сдвинуты N задач на 14 дн"}`.
+
+### 6.4 `set_dependency`
+Вход `{session_id, task, depend_on: str, action:"add"|"remove"}`. Обычная правка → применяется сразу; если образуется цикл — `{ok:false, reason:"cycle_predicted", result}` и план не меняется. Возвращает `{ok, applied, affected, new_predecessors}`.
+
+### 6.5 `add_task`
+Вход `{session_id, name, description?, assignee?, duration_days?, predecessors?}`. Применяется сразу (недеструктив), push версии, пересчёт.
+
+### 6.6 `reassign`
+Вход `{session_id, targets: {tasks: all|[...], new_assignee: str}}`. Массивное → pending при `all`; единичное → сразу.
+
+### 6.7 `update_field`
+Вход `{session_id, task, field:"name"|"description"|"assignee"|"duration_days", value: str|int}`. Одиночная правка → сразу; если affected>1 → pending. Валидация dtype, length.
+
+### 6.8 `remove_tasks`
+Вход `{session_id, targets: {tasks:[...] }}`. **Всегда** pending (деструктивно), аргументы сохраняются для replay на `/confirm`; лимит 100 задач.
+
+### 6.9 `compute`
+Вход `{session_id, agg:"sum"|"avg"|"min"|"max"|"median"|"count", field:"duration_days"|..., by?: "assignee"}`. Whitelist-агрегация через pandas; без `eval`/`exec`; не деструктивно, результат в `tool_log` и контекст модели.
+
+### 6.10 `export`
+Вход `{session_id, format:"xlsx"|"csv"}`. Выход `{ok, format, filename, bytes}` (в REST — attachment).
+
+---
+
+## 7. Двухпроходный LLM (intent + наррация)
+
+- **Шаг 1 — structured-output.** `router.py` собирает системный промпт с JSON-схемой `Intent` (pydantic; примеры команд RU + их интенты). Non-streaming вызов. Pydantic-валидация → если ошибка, 1 retry с текстом ошибки → иначе переход в режим «уточни вопрос».
+- **Шаг 2 — наррация.** Стриминг `stream=True`. Модель получает результат MCP-вызова (`{affected, diff}`) и строит слитный текст «Что изменено». SSE-токены.
+- Контекст (шаг 1+2): compact-представление плана (список `name | assignee | dur | preds | start-end | critical`, сечённое), история диалога (обрезана), последние K tool-результатов. Никогда не весь исходный файл.
+- Таймаут 60 c, retry с backoff (3), каскад — ответственность scheduler, а не модели.
+
+---
+
+## 8. Движок расписания (`core/scheduler.py`)
+
+- Вход: задачи с `predecessors`, `duration_days`.
+- **Топологическая сортировка** (Kahn). Цикл → `ok:false, cycle:[...]` (в `set_dependency`/`upload`).
+- **Forward pass**: `start(T)=max(start(P_)+duration(P_))` над её предшественниками; `end=start+duration`. Отсчёт от первого рабочего дня проекта (индекс 0 в расчёте, юзеру — день 1). Каскад после любой правки.
+- **Backward pass** → **критический путь** (правила: задачи, у которых нет запаса, флаг `critical`).
+- Юнит-тесты: топосортировка, каскад при сдвиге, крительный путь, циклы — обязательный гейт (NFR-8, R-5).
+
+---
 
 ## 9. Пошаговый план реализации
 
-Этап A - Каркас и БД: .gitignore, .env.example, docker-compose.yml, backend config/db/models, alembic init + auto-migrate, /api/healthz.
-Этап B - Ingestion и эмбеддинги: pdf_service, chunker, embedding_service, qdrant_service, indexing_service, routes/articles (upload/GET/DELETE, duplicate 409).
-Этап C - RAG/Чат: llm_service, rag_service (LangGraph retrieve->generate -> SSE stream), api/routes/chat, repositories/chat, интеграционный тест.
-Этап D - Summary + Analytics: summary_service, analytics_service, routes, покрытие аналитики.
-Этап E - Frontend, дизайн-система: Vite+shadcn+tailwind v4+geist scaffold; globals.css @theme (FR-31); UI-компоненты; AppShell; Library (DnD, status-badge, duplicate); useSSE/useCitations/api; ChatPage (citations [n], SourcesPanel, copy); SummaryPage; AnalyticsPage (4 виджета, prefill->chat); pdfPreview.
-Этап F - Nginx + Docker + SSE: nginx.conf (proxy_buffering off), Dockerfile multi-stage, проверка на Windows.
-Этап G - samples + docs: samples/ PDF, docs/ARCHITECTURE.md (<=500 слов, ASCII, обоснование Qdrant), README (quickstart, скриншоты, рекомендации Q&A, раздел Дизайн-система), .env.example финал.
-Этап H - тесты и приёмка: прогон критериев §10, pytest >=60% (ingestion/rag/summary), >=5 интеграционных.
+- **Этап A — Каркас**: `.env.example`, `.gitignore`, `docker-compose.yml`, backend config, `/api/health`, базовая сессия + seed, frontend scaffold (Vite+TS+Tailwind v4+Geist, globals.css @theme), `GET /api/session` показать Гант.
+- **Этап B — План и движок**: `core/plan.py` + `core/scheduler.py` (forward/backward, critical, ticket-циклы) + seed данных; `versions.py` (undo). Tests.
+- **Этап C — Excel**: `core/import_export.py` (upload/export, openpyxl data_only, sanitize, .csv), routes_upload/export, ошибки формата.
+- **Этап D — MCP-слой**: `mcp/server.py` + `mcp/tools.py` (9 инструментов), `policy.py`, contравятся к SessionStore/scheduler. Интеграционные тесты (без LLM).
+- **Этап E — LLM-агент + чат**: `llm/intents.py`, `context.py`, `router.py`, `agent.py`; SSE-proтокол (intent/update/delta/pending/done), ConfirmModal. Интеграция загрузки → чат → экспорт.
+- **Этап F — Frontend-центр**: `GanttChart` (Physics, зависимости-стрелки, modal), `TaskModal`, `ChatPanel` (markdown, усмотрение), `Toolbar` (upload/undo/versions/export), store.
+- **Этап G — Дизайн/DEFAULT**: строгое соответствие `DESIGN.md`; состояния loading/empty/error.
+- **Этап H — Ops + deliverables**: nginx(SSE), Dockerfile multi-stage, деплой на сервер (Render/Fly/Io/VM), README (запуск/архитектура/решения/AI-раздел), `demo.gif`, `samples/проект.xlsx`, `ROADMAP_TO_PRODUCTION.md`.
+- **Этап I — QA/pytest**: покрытие scheduler/import/export/policy ≥60%, ≥5 интеграционнных; ручной прогон сценария ТЗ; демо-gif.
 
-## 10. Дизайн-система в README (FR-39)
+---
 
-Раздел Дизайн-система в README: ссылка на docs/DESIGN.md; 8 токенов (canvas #f5f5f5, paper #ffffff, surface-alt #fafafa, ink #0a0a0a, ink-soft #171717, mid-gray #737373, hairline #e5e5e5, ember #e7000b); радиусы 18px интерактив / 24px карточки; красный #e7000b только error/destructive; шрифт Geist; трёхтоновые поверхности (canvas->sidebar->card); Tailwind v4 @theme в globals.css.
+## 10. Дизайн-система (из `DESIGN.md`, отражено в README)
+
+Монохромная светлая shadcn/ui: canvas `#f5f5f5`, paper `#ffffff`, surface-alt `#fafafa`, ink `#0a0a0a`, ink-soft `#171717`, mid-gray `#737373`, hairline `#e5e5e5`, **Ember `#e7000b` только destructive/error**. Радиусы 18 px (интерактив) / 24 px (карточки). Шрифт Geist. Трёхтоновые поверхности canvas→sidebar→card. Tailwind v4 `@theme` в `globals.css`. Задачи-бары Ганта — пассив цвета по исполнителю (не Ember), критика — штрих/усиление.
+
+---
 
 ## 11. Риски и предположения
 
-Риски: R-A дрейф эмбеддингов OpenAI/локальный -> единый EMBEDDINGS_PROVIDER, проверка размерности; R-B свежие версии (3.12, TS 5.6) -> проверить compose на Windows; R-C грязные метаданные bio-PDF -> pypdf->pdfplumber fallback; R-D SSE-буферизация прокси -> proxy_buffering off + X-Accel-Buffering: no; R-E стоимость OpenAI -> кэш саммари, лимит 6x500 токенов, локальный fallback.
+**Риски**: R-A дрейф MCP SDK v2 → фиксация `mcp==2.0.0`, in-process изоляция; R-B бесплатный хостинг (Render) останавливает демо → повтор первичного запроса + локальный запуск 1 командой; R-C каскад при сдвиге → юнит-тесты scheduler как гейт; R-D SSE буферизируется nginx → `proxy_buffering off` + `X-Accel-Buffering: no`; R-E неверный intent LLM → strict JSON, retry, «уточнить», read-only. 
 
-Предположения: один пользователь без авторизации; файлы в named volume (без S3); OpenAI основной, Ollama fallback; OCR вне скоупа; UI на русском, PDF могут быть EN; до 100 статей, до 10 одновременных загрузок, ~1 RPS чата.
+**Предположения**: one пользователь, без auth; plan in-memory (нет БД) — техдолг; LLM через API (ключ из env), Ollama optional fallback; диаграмма собственный компонент; срок demo 30 мин TTL.
 
-## Критика неполных требований
+---
 
-1. Нет отдельной таблицы метаданных чанков в SQL при векторах в Qdrant. Для chunks_total (FR-22), копирования отрывков в citations (US-11) и восстановления Qdrant после down -v нужна таблица chunks в PG. Заложена (метаданные + vector_id).
-2. chunks_total и avg_pages не специфицированны как решаемые без метаданных - решается таблицей chunks; avg_pages нулабелен.
-3. Дисбаланс default-OpenAI и критерия приемки нет-сети (§10 п.9). Без ключа все не работает. Митигация: README инструкция (Ollama fallback), осмысленные сообщения.
-4. Порядок чтения двухколоночных PDF не специфицирован (R-2). pypdf default + pdfplumber fallback, README предупреждает.
+## Критика неполных требований (из ТЗ)
+
+1. «Что показывать в модалке — решаете сами» → определены: описание, исполнитель, длительность, предшественники, вычисленные даты, критический признак, редактирование + Сохранить/Удалить.
+2. «Массово редактировать план» требует движка расписания (что считать «переносом» при зависимости) → движок вынесен в отдельное ядро (scheduler), тестируемое без LLM.
+3. Общая точка отсчёта плана (день 1) → «первый рабочий день проекта»; в расчёте индекс 0, пользователю день 1. Согласовано с FR-14.
+4. Проды ссылок динамики (Render/Fly) — не гарантирует постоянной доступности · фри-тир → README обязательная локаль-инструкция.
+5. В ТЗ нет требования авторизации/персиста -> сознательно не делаем в demo (roadmap).
