@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Task } from "../types";
 
 interface Props {
@@ -7,7 +8,8 @@ interface Props {
   onSelect: (t: Task) => void;
 }
 
-const BAR_W = 22; // px на день
+type ScaleMode = "week" | "month" | "quarter";
+
 const HEADER_H = 40; // высота шапки таблицы и шкалы (должны совпадать!)
 
 const MONTH_NAMES = [
@@ -15,32 +17,82 @@ const MONTH_NAMES = [
   "июл", "авг", "сен", "окт", "ноя", "дек",
 ];
 
-/** Разбивает последовательность дней на периоды: {start_day, label, span} */
-function buildPeriods(totalDays: number) {
+const MODES: { key: ScaleMode; label: string }[] = [
+  { key: "week", label: "Неделя · 7 дн." },
+  { key: "month", label: "Месяц · 30–31 дн." },
+  { key: "quarter", label: "Квартал · 90–92 дн." },
+];
+
+// px на день — меньше для крупных периодов, чтобы в экран влезало несколько.
+const BAR_W: Record<ScaleMode, number> = { week: 14, month: 9, quarter: 3 };
+
+/** Дней в месяце: «нечётный» месяц → 31, «чётный» → 30 (месяц 1 = январь). */
+function monthDays(month0: number): number {
+  return month0 % 2 === 0 ? 31 : 30;
+}
+
+function periodSpan(mode: ScaleMode, month0: number): number {
+  if (mode === "week") return 7;
+  if (mode === "month") return monthDays(month0);
+  // квартал = сумма трёх месяцев (в среднем 90–92)
+  return monthDays(month0) + monthDays((month0 + 1) % 12) + monthDays((month0 + 2) % 12);
+}
+
+/** Разбивает последовательность дней на периоды выбранного масштаба. */
+function buildPeriods(totalDays: number, mode: ScaleMode) {
   const periods: { start: number; label: string; span: number }[] = [];
   let day = 1;
+  let month0 = 0; // 0 = январь (нечётный месяц 1)
+  let year = 1;
+  const step = mode === "quarter" ? 3 : 1;
   while (day <= totalDays) {
-    const monthIdx = (day - 1) % 12; // 0 = январь условно
-    const isYearStart = day === 1 || ((day - 1) % 12 === 0 && day > 1);
-    const year = Math.floor((day - 1) / 12) + 1;
-    // Заголовок: год (для нового года) или месяц
-    const label = isYearStart ? `${year}` : MONTH_NAMES[monthIdx];
-    // Продолжительность периода: до конца месяца (остаток до 12) или до конца шкалы
-    const daysToMonthEnd = 12 - monthIdx;
-    const span = Math.min(daysToMonthEnd, totalDays - day + 1);
+    const span = Math.min(periodSpan(mode, month0), totalDays - day + 1);
+    let label: string;
+    if (mode === "week") {
+      label = `нед ${Math.floor((day - 1) / 7) + 1}`;
+    } else if (mode === "month") {
+      label = month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0];
+    } else {
+      label = `кв ${Math.ceil(day / 90)}`;
+    }
     periods.push({ start: day, label, span });
     day += span;
+    month0 = (month0 + step) % 12;
+    if (month0 === 0) year += 1;
   }
   return periods;
 }
 
 /** Гант: единая сетка — левая колонка задач + шкала (годы/месяцы) + бары по дням. */
 export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }: Props) {
+  const [scale, setScale] = useState<ScaleMode>("month");
   const days = Math.max(1, totalDays);
-  const periods = buildPeriods(days);
+  const barW = BAR_W[scale];
+  const periods = buildPeriods(days, scale);
 
   return (
     <div className="min-w-full">
+      {/* Переключатель масштаба */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-[#737373] font-medium">Масштаб шкалы</div>
+        <div className="flex gap-1">
+          {MODES.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setScale(m.key)}
+              className={`px-2 py-1 text-[11px] rounded border cursor-pointer transition-colors ${
+                scale === m.key
+                  ? "bg-[#0a0a0a] text-white border-[#0a0a0a]"
+                  : "bg-white text-[#0a0a0a] border-[#e5e5e5] hover:bg-[#ececec]"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid" style={{ gridTemplateColumns: `${260}px 1fr` }}>
         {/* ── ЛЕВАЯ КОЛОНКА: заголовок + задачи ── */}
         <div className="border-r border-[#e5e5e5]">
@@ -69,15 +121,15 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
 
         {/* ── ОБЛАСТЬ ШКАЛЫ + БАРЫ ── */}
         <div className="overflow-x-auto">
-          <div style={{ width: days * BAR_W + 8 }} className="relative">
-            {/* Шкала: годы/месяцы */}
+          <div style={{ width: days * barW + 8 }} className="relative">
+            {/* Шкала: периоды выбранного масштаба */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
               {periods.map((p, i) => (
                 <div
                   key={i}
                   className="flex items-end justify-start text-[10px] text-[#737373] border-l border-[#e5e5e5] pl-1 pb-0.5 overflow-hidden"
-                  style={{ width: p.span * BAR_W }}
-                  title={`день ${p.start}`}
+                  style={{ width: p.span * barW }}
+                  title={`дни ${p.start}–${p.start + p.span - 1}`}
                 >
                   {p.label}
                 </div>
@@ -87,8 +139,8 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
             {tasks.map((t) => {
               const start = t.start_day ? t.start_day - 1 : 0;
               const dur = Math.max(1, t.duration_days);
-              const left = start * BAR_W;
-              const width = Math.max(BAR_W, dur * BAR_W - 2);
+              const left = start * barW;
+              const width = Math.max(barW, dur * barW - 2);
               const isCrit = t.critical || criticalPath.includes(t.name);
               // Если задача длиннее месяца (30+ дней) — помечаем значком
               const long = dur >= 30;
