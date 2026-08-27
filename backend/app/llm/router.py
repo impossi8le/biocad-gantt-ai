@@ -53,17 +53,44 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
                       explanation="перенос всех задач")
 
     # 2. Зависимость
-    if "зависимост" in t or "предшественник" in t:
-        pred = _extract_after(t, "предшественник")
-        if not pred:
-            # пробуем маркеры «от», «после», «на»
-            for m in ("от ", "после ", "на "):
-                if m in t:
-                    pred = _extract_after(t, m)
-                    break
+    if "зависимост" in t or "зависим" in t or "предшественник" in t:
+        # Из текста берём упомянутые известные задачи. Семантика:
+        #   «сделай X предшественником Y» → task=Y, depend_on=X;
+        #   «сделай Y зависимым от X»    → task=Y, depend_on=X.
+        # Проще: последняя известная задача в тексте = task, остальные → depend_on.
+        # Матчим по префиксу слова (учитывает русские падежи: «Интеграции» ⊃ «интеграц»).
+        def _mention(n: str) -> bool:
+            nl = n.lower()
+            if nl in t:
+                return True
+            # слово в тексте начинается с префикса имени (первые 5-7 символов)
+            for w in t.split():
+                if len(nl) >= 5 and len(w) >= 5 and w.startswith(nl[:5]):
+                    return True
+            return False
+
+        def _pos(n: str) -> int:
+            nl = n.lower()
+            i = t.lower().find(nl)
+            if i != -1:
+                return i
+            for w in t.split():
+                if len(w) >= 5 and w.startswith(nl[:5]):
+                    return t.lower().find(w)
+            return 0
+
+        mentioned = [n for n in (known_names or []) if _mention(n)]
+        mentioned.sort(key=_pos)  # по порядку в тексте
+        if len(mentioned) >= 2:
+            # «сделай X предшественником Y» / «сделай Y зависимым от X» → task=последняя, depend_on=первая
+            task, depend_on = mentioned[-1], mentioned[0]
+        elif len(mentioned) == 1:
+            task, depend_on = mentioned[0], _extract_after(t, "предшественник") or ""
+        else:
+            task, depend_on = "", _extract_after(t, "предшественник") or ""
         return Intent(action=Action.SET_DEPENDENCY,
-                      targets={}, params={"task": _task_name_in_text(t, known_names),
-                                          "depend_on": pred,
+                      targets={}, params={"task": task,
+                                          "depend_on": depend_on,
                                           "action": "add"})
 
     # 3. Добавление задачи
