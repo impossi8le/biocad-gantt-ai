@@ -42,10 +42,12 @@ jobs:
       - name: Deploy via SSH
         env:
           SSH_KEY: ~/.ssh/deploy_key
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: |
-          ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '
+          ssh -i $SSH_KEY -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             set -e
             cd /opt/biocad-gantt-ai
             git pull origin master
+            echo 'LLM_API_KEY=${LLM_API_KEY}' > .env
             docker compose up -d --build
-          '
+          "
