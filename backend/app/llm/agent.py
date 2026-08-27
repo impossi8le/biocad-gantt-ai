@@ -117,6 +117,14 @@ async def apply_intent_events(
     plan_size = len(session.tasks)
 
     for idx, intent in enumerate(intents):
+        # Post-process: clean add_task name from duration (LLM часто пишет «Ветер на 3 дня»)
+        if intent.action == Action.ADD_TASK and intent.params.get("name"):
+            import re as _re
+            name = intent.params["name"]
+            cleaned = _re.sub(r"\s+на\s+\d+\s+дн[а-яё]+\s*", " ", name, flags=_re.IGNORECASE).strip()
+            if cleaned:
+                intent.params["name"] = cleaned
+
         # 1) событие intent — диагностика
         yield {
             "type": "intent",
