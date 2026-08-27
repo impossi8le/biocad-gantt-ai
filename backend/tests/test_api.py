@@ -12,7 +12,8 @@ async def test_create_session_has_seed(ac):
     assert r.status_code == 200
     j = r.json()
     assert j["session_id"]
-    assert j["state"]["schema"]["n_tasks"] == 9
+    from app.seed import SEED_TASKS
+    assert j["state"]["schema"]["n_tasks"] == len(SEED_TASKS)
     assert j["state"]["schema"]["total_days"] >= 30
 
 
@@ -20,14 +21,14 @@ async def test_create_session_has_seed(ac):
 async def test_chat_fallback_shift_returns_update(ac):
     r = await ac.post("/api/session")
     sid = r.json()["session_id"]
-    r = await ac.post(f"/api/chat/{sid}", json={"text": "перенеси задачу Тестирование на 2 дня позже"})
+    r = await ac.post(f"/api/chat/{sid}", json={"text": "перенеси задачу Интеграция на 2 дня позже"})
     assert r.status_code == 200
     events = r.json()["events"]
     types = [e.get("type") for e in events]
     assert "intent" in types and "update" in types and "done" in types
-    # после сдвига 'Тестирование' должно сдвинуться на +2
+    # после сдвига 'Интеграция' должна сдвинуться на +2
     r = await ac.get(f"/api/session/{sid}")
-    t = next(x for x in r.json()["state"]["tasks"] if x["name"] == "Тестирование")
+    t = next(x for x in r.json()["state"]["tasks"] if x["name"] == "Интеграция")
     assert t["start_day"] and t["start_day"] >= 1
 
 
@@ -102,7 +103,8 @@ async def test_undo_restores(ac):
     # Сессия стартует с версией 'initial' → первый undo успешен (200).
     r = await ac.post(f"/api/session/{sid}/undo")
     assert r.status_code == 200
-    assert r.json()["state"]["schema"]["n_tasks"] == 9
+    from app.seed import SEED_TASKS
+    assert r.json()["state"]["schema"]["n_tasks"] == len(SEED_TASKS)
     # После отката версий в стеке нет → второй undo вернёт 400.
     r2 = await ac.post(f"/api/session/{sid}/undo")
     assert r2.status_code == 400

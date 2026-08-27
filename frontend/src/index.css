@@ -105,6 +105,12 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.gantt-bar-badge {
+  margin-left: 2px;
+  font-size: 9px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
 .gantt-bar.critical {
   background: var(--accent);
 }
