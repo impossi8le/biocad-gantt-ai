@@ -178,7 +178,7 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
         </div>
 
         {/* ── ОБЛАСТЬ ШКАЛЫ + БАРЫ ── */}
-        <div ref={trackRef} className="overflow-x-auto min-w-0">
+        <div ref={trackRef} className="overflow-hidden min-w-0">
           <div style={{ width: visibleDays * barW }} className="relative">
             {/* Шкала */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
