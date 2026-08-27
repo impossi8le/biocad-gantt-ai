@@ -90,7 +90,7 @@ export default function ChatPanel({ sessionId, onEvent }: Props) {
         <textarea
           ref={textareaRef}
           className="input flex-1 resize-none overflow-y-auto min-h-[38px] max-h-[180px] leading-[1.4] py-[9px]"
-          placeholder="Опишите изменение плана на русском…"
+          placeholder="Опишите изменение…"
           value={input}
           rows={1}
           onChange={(e) => {
