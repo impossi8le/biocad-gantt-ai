@@ -58,12 +58,15 @@ docker compose up --build
 
 ### LLM: ключ или fallback
 
-- **С ключом** — задайте в `.env`/окружении: `LLM_API_KEY`, `LLM_MODEL`
-  (пример: `anthropic/claude-3-5-haiku-latest`), опционально `BASE_URL`;
-  используются `litellm`.
+- **Google AI Studio (бесплатный Gemini, дефолт)** — ключ из [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
+  модель по умолчанию `gemini/gemini-3.6-flash` (free tier, rate-limited). Достаточно задать `LLM_API_KEY`; `BASE_URL` не нужен.
+- **Любой OpenAI-совместимый роутер** (OpenRouter, RouterAI и т.п.) — задайте `LLM_API_KEY`, `LLM_MODEL`,
+  `BASE_URL` (например `https://routerai.ru/api/v1`); используются `litellm`.
 - **Без ключа** — работает **детерминированный intent-parse®** (`llm/router.py`):
   чат-сценарий («перенеси … на N дней», «удали …», «добавь задачу …» и пр.)
   полностью работает на тестовых/демо данных. Подходит для демо и тестов.
+
+**Развёрнутое демо:** http://95.142.46.44:8080 (фронт на 8080, бэкенд на 8001).
 
 ---
 
