@@ -64,6 +64,20 @@ def test_critical_includes_terminal():
     assert "a" in cp and "b" in cp and "c" in cp
 
 
+def test_shift_override_is_honored_and_cascades():
+    # Сдвиг через start_override должен удерживаться forward_pass и каскадиться на
+    # зависимые задачи, но НЕ сжиматься обратно к предшественникам.
+    tasks = _engine([("a", 2, []), ("b", 3, ["a"]), ("c", 2, ["b"])])
+    schedule(list(tasks.values()))
+    assert tasks["b"].start_day == 3
+    # сдвигаем b на +2 как mcp_shift_tasks
+    b = tasks["b"]
+    b.start_override = (b.start_day or 1) + 2
+    forward_pass(tasks)
+    assert tasks["b"].start_day == 5  # удержано сдвигом
+    assert tasks["c"].start_day == 8  # каскад: b закончилась на 7 → c старт 8
+
+
 def test_critical_mid_chain_has_slack():
     # Сходящиеся ветки к общему стоку: короткая ветка должна иметь запас,
     # даже если она не концевая (sink зависит и от неё, и от длинной b).

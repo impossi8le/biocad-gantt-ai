@@ -144,7 +144,11 @@ def mcp_shift_tasks(session: Session, targets: Dict[str, Any], params: Dict[str,
         else:
             return {"ok": False, "result": f"неизвестный mode сдвига: {mode}"}
         if t.start_day is not None:
-            t.start_day += delta
+            # Копим в start_override (удерживается scheduler'ом через forward_pass),
+            # а не только в start_day, который иначе пересчитывается из предшественников.
+            base = max(t.start_day, t.start_override or t.start_day)
+            t.start_override = base + delta
+            t.start_day = max(t.start_day, t.start_override)
             t.end_day = t.start_day + max(1, t.duration_days) - 1
             affected.append(t.name)
 

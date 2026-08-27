@@ -80,7 +80,14 @@ def forward_pass(tasks: Dict[str, Task]) -> None:
             pred = tasks.get(p)
             if pred and pred.end_day is not None:
                 earliest = max(earliest, pred.end_day)
-        task.start_day = earliest + 1  # на следующий день после позднейшего конца предшественника
+        computed = earliest + 1  # на следующий день после позднейшего конца предшественника
+        # Явный сдвиг (start_override) удерживает позицию вместо пересчёта из
+        # предшественников; каскад держит order топосорта, чтобы не создавать
+        # новых конфликтов с датами зависимых задач.
+        if task.start_override is not None:
+            task.start_day = max(computed, task.start_override)
+        else:
+            task.start_day = computed
         task.end_day = task.start_day + task.duration_days - 1
 
 

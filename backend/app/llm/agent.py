@@ -126,9 +126,14 @@ async def apply_intent_events(
     # 3) применяем напрямую
     tool_name = intent.action.value
     result = client.call_tool(tool_name, session.id, _merge_args(intent))
-    yield {"type": "update", "state": result.get("state") if isinstance(result, dict) else None,
-           "applied": isinstance(result, dict) and result.get("applied", False),
-           "result": result}
+    # Отдаём REST-совместимое состояние {schema, tasks, pending, version_head}
+    # (не MCP-build_state, чтобы фронтенд читал state.schema.source_filename).
+    yield {
+        "type": "update",
+        "state": session.state(),
+        "applied": isinstance(result, dict) and result.get("applied", False),
+        "result": result,
+    }
 
     # 4) стриминг наррации
     narration = _compose_narration(intent, result)

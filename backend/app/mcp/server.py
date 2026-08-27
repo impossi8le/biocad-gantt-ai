@@ -34,8 +34,8 @@ def _register_tool(server: MCPServer, store: SessionStore, name: str, entry: Dic
     opts: list[str] = entry.get("opts", [])
     param_names = [p for p in need + opts if p != "session_id"]
 
-    async def handler(_session_id: str = "", **kwargs: Any) -> dict:
-        session = store.get(_session_id)
+    async def handler(session_id: str = "", **kwargs: Any) -> dict:
+        session = store.get(session_id)
         if session is None:
             return {"ok": False, "error": "session_not_found", "result": "сессия не найдена"}
         return await asyncio.to_thread(execute, session, name, dict(kwargs))
