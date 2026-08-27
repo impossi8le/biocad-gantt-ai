@@ -362,7 +362,12 @@ def build_llm_prompt(text: str, schema: Dict[str, Any], known_names: List[str]) 
         f"Схема плана: {json.dumps(schema, ensure_ascii=False)[:800]}.\n"
         f"Известные задачи: {', '.join(known_names) or '(нет)'}.\n"
         f"Запрос пользователя: {text}\n"
-        "Одно действие за раз. target tasks: 'all' или список имён."
+        "Одно действие за раз. target tasks: 'all' или список имён.\n"
+        "ВАЖНО: для add_task параметр 'name' должен содержать ТОЛЬКО название задачи, "
+        "без указания длительности, исполнителя или других слов. "
+        "Длительность (duration_days) и исполнителя (assignee) вынеси в отдельные поля params. "
+        "Пример: запрос 'добавь задачу Ветер для Дарьи на 3 дня' → "
+        '{"action":"add_task","targets":{},"params":{"name":"Ветер","assignee":"Дарья","duration_days":3,"description":"","predecessors":null},"explanation":"Добавлена задача Ветер для Дарьи на 3 дня"}'
     )
 
 
