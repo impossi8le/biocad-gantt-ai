@@ -138,6 +138,8 @@ async def apply_intent_events(
 
 
 def _merge_args(intent: Intent) -> Dict[str, Any]:
+    if intent.action in (Action.REMOVE_TASKS,):
+        return {"targets": intent.targets}
     args: Dict[str, Any] = {}
     args.update(intent.targets or {})
     args.update(intent.params or {})
