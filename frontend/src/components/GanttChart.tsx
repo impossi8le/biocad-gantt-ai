@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   onSelect: (t: Task) => void;
 }
 
-type ScaleMode = "day" | "week" | "month" | "quarter";
+type ScaleMode = "day" | "week" | "month";
 
 const HEADER_H = 40; // высота шапки таблицы и шкалы (должны совпадать!)
 
@@ -21,11 +21,7 @@ const MODES: { key: ScaleMode; label: string }[] = [
   { key: "day", label: "День · 1 дн." },
   { key: "week", label: "Неделя · 7 дн." },
   { key: "month", label: "Месяц · 30–31 дн." },
-  { key: "quarter", label: "Квартал · 90–92 дн." },
 ];
-
-// px на день — меньше для крупных периодов, чтобы в экран влезало несколько.
-const BAR_W: Record<ScaleMode, number> = { day: 22, week: 22, month: 9, quarter: 3 };
 
 /** Дней в месяце: «нечётный» месяц → 31, «чётный» → 30 (месяц 1 = январь). */
 function monthDays(month0: number): number {
@@ -35,33 +31,26 @@ function monthDays(month0: number): number {
 function periodSpan(mode: ScaleMode, month0: number): number {
   if (mode === "day") return 1;
   if (mode === "week") return 7;
-  if (mode === "month") return monthDays(month0);
-  // квартал = сумма трёх месяцев (в среднем 90–92)
-  return monthDays(month0) + monthDays((month0 + 1) % 12) + monthDays((month0 + 2) % 12);
+  return monthDays(month0);
 }
 
-/** Разбивает полную шкалу на периоды (кроме режима «Неделя» — там окно). */
+/** Полная шкала (для режимов «День» и «Месяц»). */
 function buildPeriods(totalDays: number, mode: ScaleMode) {
   const periods: { start: number; label: string; span: number }[] = [];
   let day = 1;
   let month0 = 0; // 0 = январь (нечётный месяц 1)
   let year = 1;
-  const step = mode === "quarter" ? 3 : 1;
   while (day <= totalDays) {
     const span = Math.min(periodSpan(mode, month0), totalDays - day + 1);
     let label: string;
     if (mode === "day") {
       label = `${day}`;
-    } else if (mode === "week") {
-      label = `нед ${Math.floor((day - 1) / 7) + 1}`;
-    } else if (mode === "month") {
-      label = month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0];
     } else {
-      label = `кв ${Math.ceil(day / 90)}`;
+      label = month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0];
     }
     periods.push({ start: day, label, span });
     day += span;
-    month0 = (month0 + step) % 12;
+    month0 = (month0 + 1) % 12;
     if (month0 === 0) year += 1;
   }
   return periods;
@@ -82,17 +71,32 @@ function weekPeriods(totalDays: number, week: number) {
 export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }: Props) {
   const [scale, setScale] = useState<ScaleMode>("month");
   const [week, setWeek] = useState(1);
+  const [availW, setAvailW] = useState(600);
+  const trackRef = useRef<HTMLDivElement>(null);
+
   const days = Math.max(1, totalDays);
   const totalWeeks = Math.ceil(days / 7);
   const curWeek = Math.min(Math.max(1, week), totalWeeks);
 
-  const barW = BAR_W[scale];
-  // Для «Недели» — окно из 7 дней выбранной недели.
+  // Ширина области шкалы — следим, чтобы бары растягивались на всю панель.
+  useLayoutEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const update = () => setAvailW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scale, curWeek]);
+
   const isWeekView = scale === "week";
   const { periods, windowStart, windowEnd } = isWeekView
     ? weekPeriods(days, curWeek)
     : { periods: buildPeriods(days, scale), windowStart: 1, windowEnd: days };
-  const scaleWidth = isWeekView ? (windowEnd - windowStart + 1) * barW + 8 : days * barW + 8;
+
+  // Адаптивная ширина дня: вся доступная панель ÷ видимые дни → без «зажатия»/скролла.
+  const visibleDays = isWeekView ? windowEnd - windowStart + 1 : days;
+  const barW = Math.max(3, availW / Math.max(1, visibleDays));
 
   const switchMode = (m: ScaleMode) => {
     setScale(m);
@@ -174,8 +178,8 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
         </div>
 
         {/* ── ОБЛАСТЬ ШКАЛЫ + БАРЫ ── */}
-        <div className="overflow-x-auto">
-          <div style={{ width: scaleWidth }} className="relative">
+        <div ref={trackRef} className="overflow-x-auto min-w-0">
+          <div style={{ width: visibleDays * barW }} className="relative">
             {/* Шкала */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
               {periods.map((p, i) => (
