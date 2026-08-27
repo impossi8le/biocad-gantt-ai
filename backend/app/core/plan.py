@@ -58,6 +58,9 @@ class Task(BaseModel):
     start_day: Optional[int] = None
     end_day: Optional[int] = None
     critical: bool = False
+    # Явный сдвиг (shift_tasks): удерживает позицию вместо пересчёта из
+    # предшественников. None — обычное вычисление из зависимостей.
+    start_override: Optional[int] = None
     # Мета-информация импорта (не сериализуется наружу).
     original_row: Optional[int] = None
 
