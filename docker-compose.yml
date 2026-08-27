@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: backend
+    container_name: gantt-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM опционален: без ключа работает детерминированный fallback.
+      # Задайте через .env или переменные окружения при деплое.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-3-5-haiku-latest}
+      BASE_URL: ${BASE_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: gantt-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
