@@ -20,11 +20,11 @@ AI-native планировщик: интерактивная **диаграмм�
 | Сценарий | Статус |
 |---|---|
 | Демо-ссылка | http://95.142.46.44:8080 |
+| Демо-видео/gif | `docs/demo.gif` |
 | Пример Excel | [`samples/example.xlsx`](samples/example.xlsx) |
 | Дорожная карта → продукта | [`ROADMAP_TO_PRODUCTION.md`](ROADMAP_TO_PRODUCTION.md) |
 
-*Демо-видео/gif сценария «загрузка Excel → правка через чат → экспорт» — добавится
-в `docs/demo.gif` (снимается отдельно).*
+![Демо](docs/demo.gif)
 
 ---
 
