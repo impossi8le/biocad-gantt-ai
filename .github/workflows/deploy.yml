@@ -48,6 +48,6 @@ jobs:
             set -e
             cd /opt/biocad-gantt-ai
             git pull origin master
-            echo 'LLM_API_KEY=${LLM_API_KEY}' > .env
+            echo "LLM_API_KEY=${LLM_API_KEY}" > .env
             docker compose up -d --build
           "
