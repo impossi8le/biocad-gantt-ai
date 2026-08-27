@@ -10,8 +10,9 @@ services:
     environment:
       # LLM опционален: без ключа работает детерминированный fallback.
       # Задайте через .env или переменные окружения при деплое.
+      # Для Google AI Studio (бесплатный Gemini) достаточно LLM_API_KEY + LLM_MODEL (префикс gemini/).
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-3-5-haiku-latest}
+      LLM_MODEL: ${LLM_MODEL:-gemini/gemini-3.6-flash}
       BASE_URL: ${BASE_URL:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:8080","http://95.142.46.44:8080"]}
     restart: unless-stopped
