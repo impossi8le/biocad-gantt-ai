@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { Task } from "../types";
 
 interface Props {
@@ -64,12 +64,30 @@ function windowFor(view: ViewMode, days: number, week: number) {
 export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }: Props) {
   const [view, setView] = useState<ViewMode>("month");
   const [page, setPage] = useState(1);
+  const [availW, setAvailW] = useState(900);
+  const trackRef = useRef<HTMLDivElement>(null);
+
   const days = Math.max(1, totalDays);
   const { start: wStart, end: wEnd, weeks: totalPages } = windowFor(view, days, page);
   const curPage = Math.min(Math.max(1, page), totalPages);
 
   const visibleDays = wEnd - wStart + 1;
-  const barW = DAY_W;
+  // Режимы-окна (1 неделя / 5 недель) растягиваем на всю ширину панели;
+  // «Месяц» — стандартная шкала со скроллом (фиксированная ширина дня).
+  const stretch = view !== "month";
+  const barW = stretch ? Math.max(4, availW / visibleDays) : DAY_W;
+
+  // Следим за шириной области шкалы, чтобы окна заполняли панель по горизонтали.
+  useLayoutEffect(() => {
+    if (!stretch) return;
+    const el = trackRef.current;
+    if (!el) return;
+    const update = () => setAvailW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [stretch, view, curPage]);
 
   const labels = view === "month" ? monthLabels(days) : null;
 
@@ -146,7 +164,7 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
         </div>
 
         {/* ── ШКАЛА + БАРЫ ── */}
-        <div className="overflow-x-auto min-w-0">
+        <div ref={trackRef} className="overflow-x-auto min-w-0">
           <div style={{ width: visibleDays * barW }} className="relative">
             {/* Шкала: месяцы (в режиме «Месяц») или дни (в 1-неделя/5-недель) */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
