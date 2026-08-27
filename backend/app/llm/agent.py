@@ -1,6 +1,6 @@
 """Two-pass LLM-агент над in-process MCP-клиентом.
 
-Проход 1: router.parse → Intent (LLM structured-output ИЛИ fallback).
+Проход 1: router.parse → List[Intent] (LLM structured-output ИЛИ fallback).
 Проход 2: политика (policy.py) решает — отложить (pending) либо применить.
 Наррация по-русски генерируется стримингом и пушится через SSE events
 ('delta','done'). Агент НЕ исполняет операции сам: только вызывает whitelist
@@ -21,31 +21,35 @@ from ..core.policy import needs_confirmation, policy_decision
 from ..core.sessions import Session
 from ..mcp.server import MCPSessionClient
 from .intents import Action, Intent
-from .router import parse_deterministic
+from .router import parse_deterministic, split_requests
 
 
 # --- проход 1: intent (LLM ИЛИ fallback) ---------------------------------------
 
-def resolve_intent(text: str, session: Session) -> Intent:
-    """Строит Intent. Без LLM-ключа — детерминированный fallback-парсер."""
+def resolve_intents(text: str, session: Session) -> List[Intent]:
+    """Строит список Intent-ов. Разбивает составной запрос на шаги.
+
+    Без LLM-ключа — детерминированный fallback-парсер.
+    """
+    fragments = split_requests(text)
     if not llm_enabled():
-        return parse_deterministic(text, known_names=[t.name for t in session.tasks])
-    return _llm_intent(text, session)
+        return [parse_deterministic(f, known_names=[t.name for t in session.tasks])
+                for f in fragments]
+    return _llm_intents(text, session)
 
 
-def _llm_intent(text: str, session: Session) -> Intent:
+def _llm_intents(text: str, session: Session) -> List[Intent]:
     """Синхронная обёртка над LiteLLM structured-output. При ошибке → fallback."""
     try:
-        import asyncio
-
         cfg = get_settings()
-        # Либо параллельный вызов, либо минимальная синхронная обёртка.
-        return asyncio.run(_llm_intent_async(text, session, cfg))
+        return asyncio.run(_llm_intents_async(text, session, cfg))
     except Exception:
-        return parse_deterministic(text, known_names=[t.name for t in session.tasks])
+        fragments = split_requests(text)
+        return [parse_deterministic(f, known_names=[t.name for t in session.tasks])
+                for f in fragments]
 
 
-async def _llm_intent_async(text: str, session: Session, cfg) -> Intent:
+async def _llm_intents_async(text: str, session: Session, cfg) -> List[Intent]:
     from ..llm.router import build_llm_prompt, parse_llm_response
 
     schema = {
@@ -64,8 +68,12 @@ async def _llm_intent_async(text: str, session: Session, cfg) -> Intent:
     kwargs = {}
     if cfg.base_url:
         kwargs["api_base"] = cfg.base_url
-    # structured-output: просим JSON
+
+    # Gemini НЕ поддерживает response_format json_object, но игнорирует его.
+    # Для других провайдеров передаём.
+    from ..llm.router import llm_enabled
     kwargs["response_format"] = {"type": "json_object"}
+
     resp = await litellm.acompletion(
         model=cfg.llm_model,
         messages=messages,
@@ -74,7 +82,8 @@ async def _llm_intent_async(text: str, session: Session, cfg) -> Intent:
         **kwargs,
     )
     raw = resp.choices[0].message.content
-    return parse_llm_response(raw)
+    intent = parse_llm_response(raw)
+    return [intent]
 
 
 def _state_critical(session: Session) -> List[str]:
@@ -93,52 +102,59 @@ def parse_llm_response(raw: str) -> Intent:
 # --- проход 2: исполнение через MCP + стриминг наррации ------------------------
 
 async def apply_intent_events(
-    session: Session, intent: Intent, client: MCPSessionClient, stream: bool = True
+    session: Session, intents: List[Intent], client: MCPSessionClient, stream: bool = True
 ) -> AsyncIterator[Dict[str, Any]]:
-    """Применяет intent и отдаёт SSE-события (intent, update, delta, done).
+    """Применяет список intent-ов и отдаёт SSE-события.
+
+    Для каждого intent:
+    1. intent — диагностика
+    2. update — результат применения
+    3. delta — чанки наррации
+    В конце: done.
 
     Возвращает генератор событий для /chat/stream.
     """
     plan_size = len(session.tasks)
 
-    # 1) событие intent — диагностика
-    yield {
-        "type": "intent",
-        "action": intent.action.value,
-        "targets": intent.targets,
-        "params": intent.params,
-        "explanation": intent.explanation,
-    }
-
-    # 2) политика
-    decision = policy_decision(intent.action, intent.targets, plan_size)
-    if decision["need_confirmation"]:
-        pending_id = _enqueue_pending(session, intent)
+    for idx, intent in enumerate(intents):
+        # 1) событие intent — диагностика
         yield {
-            "type": "pending",
-            "pending_id": pending_id,
-            "reason": decision["reason"],
-            "affected_count": decision["affected_count"],
+            "type": "intent",
+            "step": idx + 1,
+            "total_steps": len(intents),
+            "action": intent.action.value,
+            "targets": intent.targets,
+            "params": intent.params,
+            "explanation": intent.explanation,
         }
-        # не применяем, ждём /api/pending/confirm
-        return
 
-    # 3) применяем напрямую
-    tool_name = intent.action.value
-    result = client.call_tool(tool_name, session.id, _merge_args(intent))
-    # Отдаём REST-совместимое состояние {schema, tasks, pending, version_head}
-    # (не MCP-build_state, чтобы фронтенд читал state.schema.source_filename).
-    yield {
-        "type": "update",
-        "state": session.state(),
-        "applied": isinstance(result, dict) and result.get("applied", False),
-        "result": result,
-    }
+        # 2) политика
+        decision = policy_decision(intent.action, intent.targets, plan_size)
+        if decision["need_confirmation"]:
+            pending_id = _enqueue_pending(session, intent)
+            yield {
+                "type": "pending",
+                "pending_id": pending_id,
+                "reason": decision["reason"],
+                "affected_count": decision["affected_count"],
+            }
+            return
 
-    # 4) стриминг наррации
-    narration = _compose_narration(intent, result)
-    async for chunk in _stream_narration(narration, enabled=bool(llm_enabled())):
-        yield {"type": "delta", "text": chunk}
+        # 3) применяем
+        tool_name = intent.action.value
+        result = client.call_tool(tool_name, session.id, _merge_args(intent))
+        yield {
+            "type": "update",
+            "state": session.state(),
+            "applied": isinstance(result, dict) and result.get("applied", False),
+            "result": result,
+        }
+
+        # 4) стриминг наррации
+        narration = _compose_narration(intent, result)
+        async for chunk in _stream_narration(narration, enabled=bool(llm_enabled())):
+            yield {"type": "delta", "text": chunk}
+
     yield {"type": "done"}
 
 
@@ -227,8 +243,6 @@ def _label(action: Action) -> str:
 async def _stream_narration(text: str, enabled: bool, chunk: int = 3) -> AsyncIterator[str]:
     """Отдаёт наррацию по чанкам. Без LLM — детерминированные чанки (демо)."""
     if enabled:
-        # реальный LLM-стрим: здесь упрощённо разбиваем текст по чанкам
-        # (в продакшен подключается acompletion_stream)
         for i in range(0, max(1, len(text)), chunk):
             yield text[i : i + chunk]
             await asyncio.sleep(0.01)
@@ -241,5 +255,5 @@ async def _stream_narration(text: str, enabled: bool, chunk: int = 3) -> AsyncIt
 
 
 # Асинхронный не-стриминговый intent (для REST /chat non-stream)
-async def intent_from_text(text: str, session: Session) -> Intent:
-    return await asyncio.to_thread(resolve_intent, text, session)
+async def intents_from_text(text: str, session: Session) -> List[Intent]:
+    return await asyncio.to_thread(resolve_intents, text, session)

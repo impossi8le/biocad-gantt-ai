@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     cors_origins: List[str] = ["http://localhost:5173", "http://localhost:8080"]
     # LLM (опционально; при отсутствии ключа работает детерминированный fallback)
     llm_api_key: str = ""
-    llm_model: str = "anthropic/claude-3-5-haiku-latest"
+    llm_model: str = "gemini/gemini-3.6-flash"
     base_url: str = ""
     llm_timeout: float = 60.0
     llm_max_retries: int = 3

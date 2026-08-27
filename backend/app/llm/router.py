@@ -14,6 +14,55 @@ from typing import Any, Dict, List, Optional
 from ..config import llm_enabled
 from .intents import Action, Intent
 
+# --- Разбивка составных запросов ------------------------------------------------
+
+# Союзы, по которым разделяем многошаговый запрос на отдельные действия.
+# НЕ разделяем: внутри кавычек, после «сделай»/«назначь» (идёт дополнение).
+_SPLIT_PATTERNS = [
+    re.compile(r"\s+и\s+"),          # «сделай Х и добавь Y»
+    re.compile(r"\s*,\s*затем\s+"),   # «сделай Х, затем добавь Y»
+    re.compile(r"\s*,\s*потом\s+"),   # «сделай Х, потом добавь Y»
+    re.compile(r"\s*,\s*после\s+"),   # «сделай Х, после добавь Y»
+]
+
+# Слова, которые не начинают новое действие, а продолжают текущее.
+_CONTINUATION_WORDS = {"для", "на", "ей", "ему", "им", "с", "со", "статус",
+                       "обычная", "название", "длительностью", "исполнитель"}
+
+
+def split_requests(text: str) -> List[str]:
+    """Разделяет составной запрос на отдельные фразы по союзам.
+
+    «добавь задачу Ветер для Дарьи и перенеси Интеграцию на 2 дня»
+    → ["добавь задачу Ветер для Дарьи", "перенеси Интеграцию на 2 дня"]
+
+    «добавь задачу и назови её Ветер» → НЕ разделяется
+    (слово после «и» — продолжение: «назови»).
+    """
+    t = text.strip()
+    if not t:
+        return [t] if t else []
+
+    for pattern in _SPLIT_PATTERNS:
+        candidates = []
+        idx = 0
+        for m in pattern.finditer(t):
+            after = t[m.end():].strip().split()[0] if t[m.end():].strip() else ""
+            # Если следующее слово — продолжение, а не новое действие — пропускаем
+            if after.lower() in _CONTINUATION_WORDS:
+                continue
+            candidates.append((m.start(), m.end()))
+        if candidates:
+            # Разбиваем по последнему подходящему разделителю (наиболее вероятно)
+            start, end = candidates[-1]
+            part1 = t[:start].strip()
+            part2 = t[end:].strip()
+            if part1 and part2:
+                return [part1, part2]
+
+    return [t]
+
+
 # --- Детерминированный парсер (fallback без LLM) ------------------------------
 
 _FIELD_HINTS: Dict[str, str] = {
@@ -95,11 +144,10 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
     # 3. Добавление задачи
     if "добав" in t or "новую задачу" in t or "новая задача" in t:
-        # Имя — весь хвост после «задачу»/«задача» (пропускаем окончание «у»/«а»).
-        name = _name_after_add(t)
+        name, assignee, duration = _parse_add_params(text, known_names)
         return Intent(action=Action.ADD_TASK,
                       params={"name": name or "Новая задача",
-                              "description": "", "assignee": "", "duration_days": 1})
+                              "description": "", "assignee": assignee, "duration_days": duration})
 
     # 4. Удаление
     if "удал" in t or "убери" in t or "remove" in t:
@@ -155,17 +203,104 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
 # --- Хелперы для детерминированного разбора -----------------------------------
 
+# Маппинг всех падежных форм имён → именительный падеж (кто?)
+_NAME_FORMS: dict = {
+    # Анна
+    "анна": "Анна", "анну": "Анна", "анне": "Анна", "анны": "Анна",
+    "анной": "Анна", "анною": "Анна",
+    # Борис
+    "борис": "Борис", "бориса": "Борис", "борису": "Борис", "борисом": "Борис",
+    "борисе": "Борис",
+    # Вика
+    "вика": "Вика", "вику": "Вика", "вике": "Вика", "вики": "Вика",
+    "викой": "Вика",
+    # Гриша
+    "гриша": "Гриша", "гришу": "Гриша", "грише": "Гриша", "гриши": "Гриша",
+    "гришей": "Гриша",
+    # Дарья
+    "дарья": "Дарья", "дарью": "Дарья", "дарье": "Дарья", "дарьи": "Дарья",
+    "дарьей": "Дарья",
+    # Даша
+    "даша": "Даша", "дашу": "Даша", "даше": "Даша", "даши": "Даша",
+    "дашей": "Даша",
+    # Елена
+    "елена": "Елена", "елену": "Елена", "елене": "Елена", "елены": "Елена",
+    "еленой": "Елена",
+}
+
+
 def _normalize_name(name: str) -> str:
-    """Приводит имя к начальной форме (снимает падежи): «анну»→«анна», «борису»→«борис»."""
-    n = name.strip(" ,.")
-    # Р.п./Д.п. окончания
-    if n.endswith("у") and len(n) > 3:
-        n = n[:-1] + "а"  # анну -> анна
-    elif n.endswith("ю") and len(n) > 3:
-        n = n[:-1] + "й"  # борисю не бывает; борису -> борис
-    if n.endswith("су") and len(n) > 3:
-        n = n[:-2] + "с"  # борису -> борис
-    return n
+    """Приводит имя к начальной форме через словарь падежных форм."""
+    n = name.strip(" ,.").lower()
+    return _NAME_FORMS.get(n, n.capitalize())
+
+
+def _extract_assignee(text: str) -> str:
+    """Извлекает имя исполнителя из текста.
+
+    Ищет по маркерам («для», «исполнитель») и простым перебором всех слов.
+    """
+    t = text.lower()
+    # 1. По маркерам
+    # «для Дарьи» / «для Даши» / «для Анны»
+    m = re.search(r"для\s+([а-яё]+)", t)
+    if m:
+        name = _normalize_name(m.group(1))
+        if name.lower() in _NAME_FORMS:
+            return name
+    # «исполнитель ...» / «исполнителем ...»
+    m = re.search(r"исполнител[еьм]\s+([а-яё]+)", t)
+    if m:
+        name = _normalize_name(m.group(1))
+        if name.lower() in _NAME_FORMS:
+            return name
+    # 2. Любое слово из словаря имён («Анне», «Борису» и т.п.)
+    for word in re.split(r"\s+", t):
+        word = word.strip(" ,.!?;:")
+        if word in _NAME_FORMS:
+            return _NAME_FORMS[word]
+    return ""
+
+
+def _parse_add_params(text: str, known_names: Optional[List[str]] = None) -> tuple:
+    """Парсит ADD_TASK: возвращает (name, assignee, duration_days).
+
+    Извлекает assignee из «для Имя», название из «название задачи ...»,
+    длительность из «длительностью N дней».
+    """
+    assignee = _extract_assignee(text)
+    duration = _extract_duration(text)
+
+    # Ищем явное название: «название задачи ...» / «с названием ...»
+    t = text
+    explicit_name = ""
+    for marker in ("название задачи ", "название ", "с названием "):
+        idx = t.lower().find(marker)
+        if idx != -1:
+            explicit_name = t[idx + len(marker):].strip().rstrip(".,;!?")
+            break
+
+    if explicit_name:
+        return explicit_name, assignee, duration
+
+    # Имя из хвоста после «задачу»/«задача», без «для ...»
+    name = _name_after_add(text)
+    # Если assignee уже нашли — убираем «для Имя» из имени
+    if assignee and name:
+        # Убираем «для Даши», «для Дарьи» и т.п. из начала имени
+        name = re.sub(r"для\s+\S+\s*", "", name, count=1).strip()
+    return name, assignee, duration
+
+
+def _extract_duration(text: str) -> int:
+    """Извлекает длительность: «длительностью N дней» → N."""
+    m = re.search(r"длительностью\s+(\d+)\s*дн", text.lower())
+    if m:
+        return max(1, int(m.group(1)))
+    m = re.search(r"на\s+(\d+)\s*дн", text.lower())
+    if m:
+        return max(1, int(m.group(1)))
+    return 1
 
 
 def _name_after_add(text: str) -> str:

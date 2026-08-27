@@ -23,7 +23,7 @@ from ..config import get_settings
 from ..core.import_export import ImportError_, export_tasks, parse_tasks
 from ..core.sessions import Session, SessionStore, new_session
 from ..core.plan import Task
-from ..llm.agent import apply_intent_events, intent_from_text
+from ..llm.agent import apply_intent_events, intents_from_text
 from ..mcp.server import get_client
 from ..seed import SEED_TASKS
 
@@ -130,9 +130,9 @@ async def chat(session_id: str, payload: Dict[str, Any], store: SessionStore = D
     if not text:
         raise HTTPException(status_code=400, detail="пустой запрос")
     client = get_client(store)
-    intent = await intent_from_text(text, s)
+    intents = await intents_from_text(text, s)
     events = []
-    async for ev in apply_intent_events(s, intent, client, stream=False):
+    async for ev in apply_intent_events(s, intents, client, stream=False):
         events.append(ev)
     return {"events": events}
 
@@ -145,8 +145,8 @@ async def chat_stream(session_id: str, text: str = "", store: SessionStore = Dep
     client = get_client(store)
 
     async def gen():
-        intent = await intent_from_text(text, s)
-        async for ev in apply_intent_events(s, intent, client):
+        intents = await intents_from_text(text, s)
+        async for ev in apply_intent_events(s, intents, client):
             yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
