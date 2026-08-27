@@ -59,8 +59,13 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 # Статик-фронт (если собран) — отдаётся с того же сервера в продакшине.
-_frontend_dist = Path(__file__).resolve().parents[3] / "frontend" / "dist"
-if _frontend_dist.is_dir():
+# Ищем первый существующий каталог frontend/dist среди предков файла,
+# т.к. глубина до корня в контейнере (/app/app/main.py) и в dev-репо разная.
+_frontend_dist = next(
+    (anc / "frontend" / "dist" for anc in Path(__file__).resolve().parents if (anc / "frontend" / "dist").is_dir()),
+    None,
+)
+if _frontend_dist is not None:
     app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
 
 
