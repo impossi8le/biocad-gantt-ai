@@ -24,13 +24,25 @@ export default function App() {
     [applyState],
   );
 
-  // Инициализация: создаём сессию с закешированным стартовым планом (US-1).
+  // Инициализация: восстанавливаем сессию из localStorage (если жива), иначе создаём новую.
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     (async () => {
       try {
+        const saved = localStorage.getItem("gantt_session_id");
+        if (saved) {
+          try {
+            const r = await api.getState(saved);
+            setSessionId(saved);
+            applyState(r.state);
+            return;
+          } catch {
+            // сессия протухла/удалена — создаём новую
+          }
+        }
         const s = await api.createSession();
+        localStorage.setItem("gantt_session_id", s.session_id);
         setSessionId(s.session_id);
         applyState(s.state);
       } finally {

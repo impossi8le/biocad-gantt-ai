@@ -109,10 +109,30 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
         return Intent(action=Action.REMOVE_TASKS, targets={"tasks": "all"})
 
     # 5. Назначение исполнителя
-    if "исполнител" in t or "назна" in t or "кому" in t:
-        assignee = _extract_after(t, "исполнител")
+    if "исполнител" in t or "назна" in t or "кому" in t or "передай" in t or "передайте" in t:
+        # Задача = упомянутая в тексте известная задача (если есть).
+        mentioned = [n for n in (known_names or []) if n.lower() in t]
+        # «назначь АННУ исполнителем …» — имя до слова «исполнител».
+        assignee = ""
+        m = re.search(r"назна\w+\s+([А-Яа-яЁё]+)", t)
+        if m:
+            assignee = _normalize_name(m.group(1))
+        if not assignee:
+            # Исполнитель: имя после «на »/«кому »/«исполнителем », НЕ являющееся задачей.
+            for marker in ("исполнителем ", "исполнител ", "кому ", "на ", "исполнителя "):
+                idx = t.find(marker)
+                if idx != -1:
+                    tail = t[idx + len(marker):].strip(" ,.")
+                    word = re.split(r"\s+", tail)[0] if tail else ""
+                    if word and word.lower() not in [n.lower() for n in mentioned]:
+                        assignee = _normalize_name(word)
+                        break
+        # Для «передай X Борису» — последнее слово (после удаления имён задач)
+        if not assignee:
+            words = [w for w in re.split(r"\s+", t) if w.lower() not in [n.lower() for n in mentioned]]
+            assignee = _normalize_name(words[-1]) if words else ""
         return Intent(action=Action.REASSIGN,
-                      targets={"tasks": known_names and known_names or []},
+                      targets={"tasks": mentioned or (known_names or [])},
                       params={"new_assignee": assignee})
 
     # 6. Статистика
@@ -134,6 +154,19 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
 
 # --- Хелперы для детерминированного разбора -----------------------------------
+
+def _normalize_name(name: str) -> str:
+    """Приводит имя к начальной форме (снимает падежи): «анну»→«анна», «борису»→«борис»."""
+    n = name.strip(" ,.")
+    # Р.п./Д.п. окончания
+    if n.endswith("у") and len(n) > 3:
+        n = n[:-1] + "а"  # анну -> анна
+    elif n.endswith("ю") and len(n) > 3:
+        n = n[:-1] + "й"  # борисю не бывает; борису -> борис
+    if n.endswith("су") and len(n) > 3:
+        n = n[:-2] + "с"  # борису -> борис
+    return n
+
 
 def _name_after_add(text: str) -> str:
     """Имя новой задачи — хвост после «задачу»/«задача», без окончания («у»/«а»).
