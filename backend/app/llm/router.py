@@ -371,6 +371,26 @@ def build_llm_prompt(text: str, schema: Dict[str, Any], known_names: List[str]) 
     )
 
 
+def _clean_add_task_name(intent: Intent) -> None:
+    """Очищает name от остатков длительности/исполнителя, если LLM не отделила."""
+    if intent.action != Action.ADD_TASK:
+        return
+    name = intent.params.get("name", "")
+    if not name:
+        return
+    # «на N дней/дня/день» в конце
+    cleaned = re.sub(r"\s+на\s+\d+\s+дн[ейя]\s*$", "", name, flags=re.IGNORECASE)
+    # «на N дня» (родительный)
+    cleaned = re.sub(r"\s+на\s+\d+\s+дня\s*$", "", cleaned, flags=re.IGNORECASE)
+    # «длительностью N дней/дня» в конце
+    cleaned = re.sub(r"\s+длительностью\s+\d+\s+дн[ейя]\s*$", "", cleaned, flags=re.IGNORECASE)
+    # «для Имя» в конце
+    cleaned = re.sub(r"\s+для\s+\S+\s*$", "", cleaned)
+    cleaned = cleaned.strip()
+    if cleaned:
+        intent.params["name"] = cleaned
+
+
 def parse_llm_response(raw: str) -> Intent:
     """Разбирает JSON-ответ LLM в Intent (устойчив к markdown-обёртке)."""
     s = raw.strip()
@@ -382,4 +402,6 @@ def parse_llm_response(raw: str) -> Intent:
     if not m:
         raise ValueError("LLM не вернул JSON")
     data = json.loads(m.group(0))
-    return Intent(**data)
+    intent = Intent(**data)
+    _clean_add_task_name(intent)
+    return intent
