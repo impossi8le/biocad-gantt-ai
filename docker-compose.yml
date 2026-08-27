@@ -13,7 +13,7 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-anthropic/claude-3-5-haiku-latest}
       BASE_URL: ${BASE_URL:-}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080,http://95.142.46.44:8080}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:8080","http://95.142.46.44:8080"]}
     restart: unless-stopped
 
   frontend:
