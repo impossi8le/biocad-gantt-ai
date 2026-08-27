@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  /* DESIGN.md: монохромный токены */
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --text: #0a0a0a;
+  --muted: #737373;
+  --border: #e5e5e5;
+  --accent: #e7000b;
+  --radius: 18px;
+  --radius-sm: 12px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn:hover {
+  background: #ececec;
+}
+.btn-primary {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
+.btn-primary:hover {
+  background: #333;
+}
+.btn-danger {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.btn-muted {
+  background: transparent;
+  color: var(--muted);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.input {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+.input:focus {
+  border-color: var(--text);
+}
+
+/* Gantt-бары */
+.gantt-row {
+  height: 34px;
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.gantt-bar {
+  position: absolute;
+  top: 5px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--text);
+  color: #fff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.gantt-bar.critical {
+  background: var(--accent);
+}
+.gantt-bar:hover {
+  filter: brightness(1.15);
+}

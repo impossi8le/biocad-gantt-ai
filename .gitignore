@@ -27,3 +27,5 @@ data/raw/
 # IDE
 .idea/
 .vscode/
+frontend/dist/
+frontend/node_modules/
