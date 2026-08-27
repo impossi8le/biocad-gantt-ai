@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { Task } from "../types";
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   onSelect: (t: Task) => void;
 }
 
-type ScaleMode = "day" | "week" | "month";
+type ViewMode = "week" | "weeks5" | "month";
 
 const HEADER_H = 40; // высота шапки таблицы и шкалы (должны совпадать!)
 
@@ -17,115 +17,90 @@ const MONTH_NAMES = [
   "июл", "авг", "сен", "окт", "ноя", "дек",
 ];
 
-const MODES: { key: ScaleMode; label: string }[] = [
-  { key: "day", label: "День · 1 дн." },
-  { key: "week", label: "Неделя · 7 дн." },
-  { key: "month", label: "Месяц · 30–31 дн." },
+const MODES: { key: ViewMode; label: string }[] = [
+  { key: "week", label: "1 неделя" },
+  { key: "weeks5", label: "Недели · 5" },
+  { key: "month", label: "Месяц" },
 ];
+
+// px на день — стандартно для Ганта: фиксированная ширина дня.
+const DAY_W = 22;
 
 /** Дней в месяце: «нечётный» месяц → 31, «чётный» → 30 (месяц 1 = январь). */
 function monthDays(month0: number): number {
   return month0 % 2 === 0 ? 31 : 30;
 }
 
-function periodSpan(mode: ScaleMode, month0: number): number {
-  if (mode === "day") return 1;
-  if (mode === "week") return 7;
-  return monthDays(month0);
-}
-
-/** Полная шкала (для режимов «День» и «Месяц»). */
-function buildPeriods(totalDays: number, mode: ScaleMode) {
-  const periods: { start: number; label: string; span: number }[] = [];
+/** Разбивает последовательность дней на месяцы (для подписей шкалы). */
+function monthLabels(totalDays: number) {
+  const labels: { start: number; span: number; label: string }[] = [];
   let day = 1;
-  let month0 = 0; // 0 = январь (нечётный месяц 1)
+  let month0 = 0;
   let year = 1;
   while (day <= totalDays) {
-    const span = Math.min(periodSpan(mode, month0), totalDays - day + 1);
-    let label: string;
-    if (mode === "day") {
-      label = `${day}`;
-    } else {
-      label = month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0];
-    }
-    periods.push({ start: day, label, span });
+    const span = Math.min(monthDays(month0), totalDays - day + 1);
+    labels.push({ start: day, span, label: month0 === 0 && year > 1 ? `янв ${year}` : MONTH_NAMES[month0] });
     day += span;
     month0 = (month0 + 1) % 12;
     if (month0 === 0) year += 1;
   }
-  return periods;
+  return labels;
 }
 
-/** Дни выбранной недели (для детального просмотра в режиме «Неделя»). */
-function weekPeriods(totalDays: number, week: number) {
-  const windowStart = (week - 1) * 7 + 1;
-  const windowEnd = Math.min(week * 7, totalDays);
-  const periods: { start: number; label: string; span: number }[] = [];
-  for (let d = windowStart; d <= windowEnd; d++) {
-    periods.push({ start: d, label: `${d}`, span: 1 });
+/** Окно видимой шкалы: {startDay, endDay} для выбранного режима. */
+function windowFor(view: ViewMode, days: number, week: number) {
+  if (view === "week") {
+    const start = (week - 1) * 7 + 1;
+    return { start, end: Math.min(week * 7, days), weeks: Math.ceil(days / 7) };
   }
-  return { periods, windowStart, windowEnd };
+  if (view === "weeks5") {
+    const start = (week - 1) * 35 + 1;
+    return { start, end: Math.min(week * 35, days), weeks: Math.ceil(days / 35) };
+  }
+  return { start: 1, end: days, weeks: 1 };
 }
 
-/** Гант: единая сетка — левая колонка задач + шкала + бары по дням. */
+/** Гант: стандартная логика — бары по дням; переключатель вида окна. */
 export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }: Props) {
-  const [scale, setScale] = useState<ScaleMode>("month");
-  const [week, setWeek] = useState(1);
-  const [availW, setAvailW] = useState(600);
-  const trackRef = useRef<HTMLDivElement>(null);
-
+  const [view, setView] = useState<ViewMode>("month");
+  const [page, setPage] = useState(1);
   const days = Math.max(1, totalDays);
-  const totalWeeks = Math.ceil(days / 7);
-  const curWeek = Math.min(Math.max(1, week), totalWeeks);
+  const { start: wStart, end: wEnd, weeks: totalPages } = windowFor(view, days, page);
+  const curPage = Math.min(Math.max(1, page), totalPages);
 
-  // Ширина области шкалы — следим, чтобы бары растягивались на всю панель.
-  useLayoutEffect(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    const update = () => setAvailW(el.clientWidth);
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [scale, curWeek]);
+  const visibleDays = wEnd - wStart + 1;
+  const barW = DAY_W;
 
-  const isWeekView = scale === "week";
-  const { periods, windowStart, windowEnd } = isWeekView
-    ? weekPeriods(days, curWeek)
-    : { periods: buildPeriods(days, scale), windowStart: 1, windowEnd: days };
+  const labels = view === "month" ? monthLabels(days) : null;
 
-  // Адаптивная ширина дня: вся доступная панель ÷ видимые дни → без «зажатия»/скролла.
-  const visibleDays = isWeekView ? windowEnd - windowStart + 1 : days;
-  const barW = Math.max(3, availW / Math.max(1, visibleDays));
-
-  const switchMode = (m: ScaleMode) => {
-    setScale(m);
-    if (m === "week") setWeek(1);
+  const switchView = (m: ViewMode) => {
+    setView(m);
+    setPage(1);
   };
 
   return (
     <div className="min-w-full">
-      {/* Переключатель масштаба + навигация по неделям */}
+      {/* Переключатель вида + навигация по страницам */}
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-[#737373] font-medium">
-          Масштаб шкалы
-          {isWeekView && (
+          Показывать
+          {view !== "month" && (
             <span className="ml-2 inline-flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setWeek(curWeek - 1)}
-                disabled={curWeek <= 1}
+                onClick={() => setPage(curPage - 1)}
+                disabled={curPage <= 1}
                 className="w-6 h-6 text-[11px] rounded border border-[#e5e5e5] bg-white text-[#0a0a0a] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ‹
               </button>
               <span className="text-[11px] text-[#0a0a0a]">
-                Неделя {curWeek} из {totalWeeks} · дни {windowStart}–{windowEnd}
+                {view === "week" ? `Неделя ${curPage} из ${totalPages} · дни ${wStart}–${wEnd}` : `Стр. ${curPage} из ${totalPages} · недели ${((curPage - 1) * 5) + 1}–${Math.min(curPage * 5, Math.ceil(days / 7))}`}
               </span>
               <button
                 type="button"
-                onClick={() => setWeek(curWeek + 1)}
-                disabled={curWeek >= totalWeeks}
+                onClick={() => setPage(curPage + 1)}
+                disabled={curPage >= totalPages}
                 className="w-6 h-6 text-[11px] rounded border border-[#e5e5e5] bg-white text-[#0a0a0a] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 ›
@@ -138,9 +113,9 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
             <button
               key={m.key}
               type="button"
-              onClick={() => switchMode(m.key)}
+              onClick={() => switchView(m.key)}
               className={`px-2 py-1 text-[11px] rounded border cursor-pointer transition-colors ${
-                scale === m.key
+                view === m.key
                   ? "bg-[#0a0a0a] text-white border-[#0a0a0a]"
                   : "bg-white text-[#0a0a0a] border-[#e5e5e5] hover:bg-[#ececec]"
               }`}
@@ -152,7 +127,7 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: `${260}px 1fr` }}>
-        {/* ── ЛЕВАЯ КОЛОНКА: заголовок + задачи ── */}
+        {/* ── ЛЕВАЯ КОЛОНКА ── */}
         <div className="border-r border-[#e5e5e5]">
           <div
             className="flex items-center px-3 text-xs text-[#737373] font-medium border-b border-[#e5e5e5]"
@@ -161,15 +136,8 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
             Задача
           </div>
           {tasks.map((t) => (
-            <div
-              key={t.id}
-              className="h-[34px] flex items-center px-3 text-[12px] border-b border-[#e5e5e5]"
-            >
-              <span
-                className="cursor-pointer hover:underline truncate min-w-0"
-                title={t.name}
-                onClick={() => onSelect(t)}
-              >
+            <div key={t.id} className="h-[34px] flex items-center px-3 text-[12px] border-b border-[#e5e5e5]">
+              <span className="cursor-pointer hover:underline truncate min-w-0" title={t.name} onClick={() => onSelect(t)}>
                 {t.name}
               </span>
               <span className="ml-auto text-[#737373] shrink-0 pl-2">{t.assignee}</span>
@@ -177,21 +145,35 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
           ))}
         </div>
 
-        {/* ── ОБЛАСТЬ ШКАЛЫ + БАРЫ ── */}
-        <div ref={trackRef} className="overflow-hidden min-w-0">
-          <div style={{ width: Math.max(1, visibleDays * barW - 2) }} className="relative">
-            {/* Шкала */}
+        {/* ── ШКАЛА + БАРЫ ── */}
+        <div className="overflow-x-auto min-w-0">
+          <div style={{ width: visibleDays * barW }} className="relative">
+            {/* Шкала: месяцы (в режиме «Месяц») или дни (в 1-неделя/5-недель) */}
             <div className="flex items-end" style={{ height: HEADER_H }}>
-              {periods.map((p, i) => (
-                <div
-                  key={i}
-                  className="flex items-end justify-start text-[10px] text-[#737373] border-l border-[#e5e5e5] pl-1 pb-0.5 overflow-hidden"
-                  style={{ width: p.span * barW }}
-                  title={p.span === 1 ? `день ${p.start}` : `дни ${p.start}–${p.start + p.span - 1}`}
-                >
-                  {p.label}
-                </div>
-              ))}
+              {view === "month"
+                ? labels!.map((l, i) => (
+                    <div
+                      key={i}
+                      className="flex items-end justify-start text-[10px] text-[#737373] border-l border-[#e5e5e5] pl-1 pb-0.5 overflow-hidden"
+                      style={{ width: l.span * barW }}
+                      title={`дни ${l.start}–${l.start + l.span - 1}`}
+                    >
+                      {l.label}
+                    </div>
+                  ))
+                : Array.from({ length: visibleDays }).map((_, i) => {
+                    const d = wStart + i;
+                    return (
+                      <div
+                        key={d}
+                        className="flex items-end justify-start text-[10px] text-[#737373] border-l border-[#e5e5e5] pl-1 pb-0.5 overflow-hidden"
+                        style={{ width: barW }}
+                        title={`день ${d}`}
+                      >
+                        {d}
+                      </div>
+                    );
+                  })}
             </div>
             {/* Строки баров */}
             {tasks.map((t) => {
@@ -201,11 +183,10 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
               const isCrit = t.critical || criticalPath.includes(t.name);
               const long = dur >= 30;
 
-              // Позиция относительно начала видимого окна.
-              const left = Math.max(0, tStart - windowStart) * barW;
-              const rightEdge = Math.min(tEnd, windowEnd) - windowStart + 1;
+              const left = Math.max(0, tStart - wStart) * barW;
+              const rightEdge = Math.min(tEnd, wEnd) - wStart + 1;
               const width = Math.max(barW, rightEdge * barW - 2);
-              const visible = tEnd >= windowStart && tStart <= windowEnd;
+              const visible = tEnd >= wStart && tStart <= wEnd;
               if (!visible) return null;
 
               return (
