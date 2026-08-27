@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Data / runtime
+*.db
+*.sqlite3
+qdrant_storage/
+data/raw/
+
+# IDE
+.idea/
+.vscode/
