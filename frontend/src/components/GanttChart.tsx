@@ -53,11 +53,11 @@ export default function GanttChart({ tasks, totalDays, criticalPath, onSelect }:
                 <div key={t.id} className="gantt-row relative" style={{ height: 34 }}>
                   <div
                     className={`gantt-bar ${isCrit ? "critical" : ""}`}
-                    style={{ left, width }}
+                    style={{ left, width, fontSize: width < 60 ? 9 : width < 110 ? 10 : 11 }}
                     onClick={() => onSelect(t)}
                     title={`${t.name} · дн. ${t.start_day ?? "?"}–${t.end_day ?? "?"}`}
                   >
-                    {t.name}
+                    <span className="gantt-bar-label">{t.name}</span>
                   </div>
                 </div>
               );

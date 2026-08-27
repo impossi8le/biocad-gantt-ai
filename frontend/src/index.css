@@ -92,11 +92,18 @@ body,
   font-size: 11px;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 6px;
   overflow: hidden;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+}
+.gantt-bar-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gantt-bar.critical {
   background: var(--accent);
