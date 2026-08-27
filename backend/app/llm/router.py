@@ -54,16 +54,25 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
 
     # 2. Зависимость
     if "зависимост" in t or "предшественник" in t:
-        pred = _after(t, ["от", "после", "на"])
+        pred = _extract_after(t, "предшественник")
+        if not pred:
+            # пробуем маркеры «от», «после», «на»
+            for m in ("от ", "после ", "на "):
+                if m in t:
+                    pred = _extract_after(t, m)
+                    break
         return Intent(action=Action.SET_DEPENDENCY,
-                      targets={}, params={"task": _task_in_text(t, known_names),
+                      targets={}, params={"task": _task_name_in_text(t, known_names),
                                           "depend_on": pred,
                                           "action": "add"})
 
     # 3. Добавление задачи
     if "добав" in t or "новую задачу" in t or "новая задача" in t:
+        name = _extract_after(t, "задач")
+        if not name:
+            name = _extract_after(t, "задача")
         return Intent(action=Action.ADD_TASK,
-                      params={"name": _extract_between(t, "задач", ""),
+                      params={"name": name or "Новая задача",
                               "description": "", "assignee": "", "duration_days": 1})
 
     # 4. Удаление
