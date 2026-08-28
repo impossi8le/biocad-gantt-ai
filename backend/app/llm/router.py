@@ -26,8 +26,9 @@ _SPLIT_PATTERNS = [
 ]
 
 # Слова, которые не начинают новое действие, а продолжают текущее.
-_CONTINUATION_WORDS = {"для", "на", "ей", "ему", "им", "с", "со", "статус",
-                       "обычная", "название", "длительностью", "исполнитель"}
+_CONTINUATION_WORDS = {"для", "на", "ей", "ее", "её", "его", "их", "ему", "им",
+                       "с", "со", "статус", "обычная", "название", "длительностью",
+                       "исполнитель"}
 
 
 def split_requests(text: str) -> List[str]:
@@ -142,8 +143,22 @@ def parse_deterministic(text: str, known_names: Optional[List[str]] = None) -> I
                                           "depend_on": depend_on,
                                           "action": "add"})
 
+    # 2.5. Установка дня старта
+    if "поставь" in t or "начни" in t or "начина" in t:
+        # «поставь задачу X на N день» или «поставь её на N день»
+        task = ""
+        day = _extract_day_number(t)
+        if known_names:
+            for n in known_names:
+                if n.lower() in t:
+                    task = n
+                    break
+        if day:
+            return Intent(action=Action.SET_START_DAY,
+                          targets={}, params={"task": task, "day": day})
+
     # 3. Добавление задачи
-    if "добав" in t or "новую задачу" in t or "новая задача" in t:
+    if "добав" in t or "новую задачу" in t or "новая задача" in t or "создай" in t or "создать" in t:
         name, assignee, duration = _parse_add_params(text, known_names)
         return Intent(action=Action.ADD_TASK,
                       params={"name": name or "Новая задача",
@@ -220,9 +235,11 @@ _NAME_FORMS: dict = {
     # Дарья
     "дарья": "Дарья", "дарью": "Дарья", "дарье": "Дарья", "дарьи": "Дарья",
     "дарьей": "Дарья",
-    # Даша
-    "даша": "Даша", "дашу": "Даша", "даше": "Даша", "даши": "Даша",
-    "дашей": "Даша",
+    "даша": "Дарья", "дашу": "Дарья", "даше": "Дарья", "даши": "Дарья",
+    "дашей": "Дарья",
+    "дашутка": "Дарья", "дашутку": "Дарья", "дашутке": "Дарья", "дашутки": "Дарья",
+    "дашуткой": "Дарья",
+    "дашка": "Дарья", "дашкой": "Дарья",
     # Елена
     "елена": "Елена", "елену": "Елена", "елене": "Елена", "елены": "Елена",
     "еленой": "Елена",
@@ -331,6 +348,17 @@ def _extract_offset(text: str) -> Optional[int]:
     return 1
 
 
+def _extract_day_number(text: str) -> Optional[int]:
+    """Извлекает номер дня: «на 6 день» → 6, «на 6-й день» → 6."""
+    m = re.search(r"на\s+(\d+)(?:-?й|)\s+день", text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d+)(?:-?й|)\s+день", text)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 def _task_name_in_text(text: str, known: Optional[List[str]]) -> str:
     if known:
         for n in known:
@@ -355,19 +383,39 @@ def build_llm_prompt(text: str, schema: Dict[str, Any], known_names: List[str]) 
     """Промпт первого прохода: LLM возвращает только JSON Intent."""
     return (
         "Ты — ассистент редактора проектного плана (диаграмма Ганта). "
-        'Ответь строго JSON-объектом вида {"action": "<инструмент>", "targets": {...}, '
-        '"params": {...}, "explanation": "<на русском>"}. '
-        "Инструменты: get_schema, get_task, shift_tasks, set_dependency, add_task, "
-        "reassign, update_field, remove_tasks, compute, export, undo, help.\n"
-        f"Схема плана: {json.dumps(schema, ensure_ascii=False)[:800]}.\n"
+        "Твоя задача — понять намерение пользователя и вернуть JSON-объект "
+        'вида {"action": "<инструмент>", "targets": {...}, '
+        '"params": {...}, "explanation": "<на русском>"}.\n'
+        "Инструменты:\n"
+        "- get_schema — получить схему плана\n"
+        "- get_task — детали задачи\n"
+        "- shift_tasks — сдвинуть задачи (params: {mode: 'offset', value: N} или {mode: 'to_date', value: N})\n"
+        "- set_dependency — установить зависимость (params: {task: 'X', depend_on: 'Y'})\n"
+        "- add_task — добавить задачу (params: {name, assignee, duration_days, description, predecessors})\n"
+        "- reassign — сменить исполнителя (params: {new_assignee: 'Имя'})\n"
+        "- update_field — обновить поле задачи\n"
+        "- remove_tasks — удалить задачи\n"
+        "- set_start_day — установить задаче конкретный день старта (params: {task: 'Имя', day: N})\n"
+        "- compute — статистика\n"
+        "- export — экспорт\n"
+        "- undo — откат\n"
+        "- help — справка\n"
+        f"Схема плана: {json.dumps(schema, ensure_ascii=False)}\n"
         f"Известные задачи: {', '.join(known_names) or '(нет)'}.\n"
         f"Запрос пользователя: {text}\n"
-        "Одно действие за раз. target tasks: 'all' или список имён.\n"
-        "ВАЖНО: для add_task параметр 'name' должен содержать ТОЛЬКО название задачи, "
-        "без указания длительности, исполнителя или других слов. "
-        "Длительность (duration_days) и исполнителя (assignee) вынеси в отдельные поля params. "
-        "Пример: запрос 'добавь задачу Ветер для Дарьи на 3 дня' → "
-        '{"action":"add_task","targets":{},"params":{"name":"Ветер","assignee":"Дарья","duration_days":3,"description":"","predecessors":null},"explanation":"Добавлена задача Ветер для Дарьи на 3 дня"}'
+        "Правила:\n"
+        "- Одно действие за раз.\n"
+        "- target tasks: 'all' или список имён.\n"
+        "- Для add_task параметр 'name' — ТОЛЬКО название задачи, без длительности и исполнителя.\n"
+        "- Для shift_tasks: 'перенеси на N дней позже' → mode='offset', value=N.\n"
+        "- Для set_start_day: 'поставь на N день' / 'начни с N дня' → task='Имя задачи', day=N.\n"
+        "- Для reassign: 'передай X на Имя' / 'назначь Имя исполнителем X' → targets={{tasks: ['X']}}, params={{new_assignee: 'Имя'}}.\n"
+        "- Имена исполнителей и задач извлекай из запроса. Если имя в уменьшительной форме (Дашутка, Сашок) — нормализуй.\n"
+        "Примеры:\n"
+        "  'добавь задачу Ветер для Дарьи на 3 дня' → {\"action\":\"add_task\",\"targets\":{},\"params\":{\"name\":\"Ветер\",\"assignee\":\"Дарья\",\"duration_days\":3,\"description\":\"\"}}\n"
+        "  'создай задачу Ветер для Дашутки и поставь её на 6 день' → два действия: add_task, потом set_start_day\n"
+        "  'поставь задачу Ветер на 6 день' → {\"action\":\"set_start_day\",\"targets\":{},\"params\":{\"task\":\"Ветер\",\"day\":6}}\n"
+        "  'перенеси Анализ на 2 дня позже' → {\"action\":\"shift_tasks\",\"targets\":{\"tasks\":[\"Анализ\"]},\"params\":{\"mode\":\"offset\",\"value\":2}}\n"
     )
 
 

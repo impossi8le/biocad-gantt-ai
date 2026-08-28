@@ -132,6 +132,7 @@ def test_parse_add_params_only_assignee():
 def test_normalize_name():
     assert _normalize_name("анну") == "Анна"
     assert _normalize_name("анна") == "Анна"
-    assert _normalize_name("дашу") == "Даша"
+    assert _normalize_name("дашу") == "Дарья"
     assert _normalize_name("дарью") == "Дарья"
+    assert _normalize_name("дашутку") == "Дарья"
     assert _normalize_name("бориса") == "Борис"

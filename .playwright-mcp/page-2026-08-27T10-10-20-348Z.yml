@@ -1,0 +1,93 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - heading "Gantt AI Plan" [level=1] [ref=f3e6]
+      - generic [ref=f3e7]: "тестовый-план.xlsx · 9 задач · 31 дн. · критический путь: Инициация → Анализ → Дизайн → Разработка фронтенда → Интеграция → Тестирование → Документация → Релиз"
+    - generic [ref=f3e8]:
+      - button "Загрузить Excel" [ref=f3e9] [cursor=pointer]
+      - button "Экспорт" [ref=f3e10] [cursor=pointer]
+      - button "Отмена" [ref=f3e11] [cursor=pointer]
+      - button "Обновить" [ref=f3e12] [cursor=pointer]
+  - main [ref=f3e13]:
+    - generic [ref=f3e15]:
+      - generic [ref=f3e16]:
+        - generic [ref=f3e17]:
+          - generic [ref=f3e18]: Задача
+          - generic [ref=f3e19]:
+            - generic "Инициация" [ref=f3e20] [cursor=pointer]
+            - generic [ref=f3e21]: Анна
+          - generic [ref=f3e22]:
+            - generic "Анализ" [ref=f3e23] [cursor=pointer]
+            - generic [ref=f3e24]: Борис
+          - generic [ref=f3e25]:
+            - generic "Дизайн" [ref=f3e26] [cursor=pointer]
+            - generic [ref=f3e27]: Вика
+          - generic [ref=f3e28]:
+            - generic "Разработка бэкенда" [ref=f3e29] [cursor=pointer]
+            - generic [ref=f3e30]: Борис
+          - generic [ref=f3e31]:
+            - generic "Разработка фронтенда" [ref=f3e32] [cursor=pointer]
+            - generic [ref=f3e33]: Гриша
+          - generic [ref=f3e34]:
+            - generic "Интеграция" [ref=f3e35] [cursor=pointer]
+            - generic [ref=f3e36]: Дарья
+          - generic [ref=f3e37]:
+            - generic "Тестирование" [ref=f3e38] [cursor=pointer]
+            - generic [ref=f3e39]: Елена
+          - generic [ref=f3e40]:
+            - generic "Документация" [ref=f3e41] [cursor=pointer]
+            - generic [ref=f3e42]: Анна
+          - generic [ref=f3e43]:
+            - generic "Релиз" [ref=f3e44] [cursor=pointer]
+            - generic [ref=f3e45]: Дарья
+        - generic [ref=f3e47]:
+          - generic [ref=f3e48]:
+            - generic [ref=f3e49]: "1"
+            - generic [ref=f3e50]: "2"
+            - generic [ref=f3e51]: "3"
+            - generic [ref=f3e52]: "4"
+            - generic [ref=f3e53]: "5"
+            - generic [ref=f3e54]: "6"
+            - generic [ref=f3e55]: "7"
+            - generic [ref=f3e56]: "8"
+            - generic [ref=f3e57]: "9"
+            - generic [ref=f3e58]: "10"
+            - generic [ref=f3e59]: "11"
+            - generic [ref=f3e60]: "12"
+            - generic [ref=f3e61]: "13"
+            - generic [ref=f3e62]: "14"
+            - generic [ref=f3e63]: "15"
+            - generic [ref=f3e64]: "16"
+            - generic [ref=f3e65]: "17"
+            - generic [ref=f3e66]: "18"
+            - generic [ref=f3e67]: "19"
+            - generic [ref=f3e68]: "20"
+            - generic [ref=f3e69]: "21"
+            - generic [ref=f3e70]: "22"
+            - generic [ref=f3e71]: "23"
+            - generic [ref=f3e72]: "24"
+            - generic [ref=f3e73]: "25"
+            - generic [ref=f3e74]: "26"
+            - generic [ref=f3e75]: "27"
+            - generic [ref=f3e76]: "28"
+            - generic [ref=f3e77]: "29"
+            - generic [ref=f3e78]: "30"
+            - generic [ref=f3e79]: "31"
+          - generic "Инициация · дн. 1–3" [ref=f3e81] [cursor=pointer]: Инициация
+          - generic "Анализ · дн. 4–7" [ref=f3e83] [cursor=pointer]: Анализ
+          - generic "Дизайн · дн. 8–12" [ref=f3e85] [cursor=pointer]: Дизайн
+          - generic "Разработка бэкенда · дн. 8–15" [ref=f3e87] [cursor=pointer]: Разработка бэкенда
+          - generic "Разработка фронтенда · дн. 13–18" [ref=f3e89] [cursor=pointer]: Разработка фронтенда
+          - generic "Интеграция · дн. 19–22" [ref=f3e91] [cursor=pointer]: Интеграция
+          - generic "Тестирование · дн. 23–27" [ref=f3e93] [cursor=pointer]: Тестирование
+          - generic "Документация · дн. 28–29" [ref=f3e95] [cursor=pointer]: Документация
+          - generic "Релиз · дн. 30–31" [ref=f3e97] [cursor=pointer]: Релиз
+      - generic [ref=f3e98]:
+        - generic [ref=f3e99]: критический путь
+        - generic [ref=f3e101]: обычная задача
+    - generic [ref=f3e104]:
+      - generic [ref=f3e105]: Редактирование плана
+      - generic [ref=f3e106]: "Примеры: «перенеси Разработку бэкенда на 2 дня позже», «сделай Дизайн предшественником Интеграции», «добавь задачу Документация дизайнеру», «удали задачу Релиз», «передай исполнителя на Анну»."
+      - generic [ref=f3e108]:
+        - textbox "Опишите изменение плана на русском…" [active] [ref=f3e109]
+        - button "Отправить" [ref=f3e110] [cursor=pointer]

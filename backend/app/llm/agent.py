@@ -29,27 +29,25 @@ from .router import parse_deterministic, split_requests
 def resolve_intents(text: str, session: Session) -> List[Intent]:
     """Строит список Intent-ов. Разбивает составной запрос на шаги.
 
-    Без LLM-ключа — детерминированный fallback-парсер.
+    Всегда разбиваем на фрагменты, затем каждый фрагмент парсим отдельно.
     """
     fragments = split_requests(text)
     if not llm_enabled():
         return [parse_deterministic(f, known_names=[t.name for t in session.tasks])
                 for f in fragments]
-    return _llm_intents(text, session)
+    return [_llm_intent(f, session) for f in fragments]
 
 
-def _llm_intents(text: str, session: Session) -> List[Intent]:
+def _llm_intent(text: str, session: Session) -> Intent:
     """Синхронная обёртка над LiteLLM structured-output. При ошибке → fallback."""
     try:
         cfg = get_settings()
-        return asyncio.run(_llm_intents_async(text, session, cfg))
+        return asyncio.run(_llm_intent_async(text, session, cfg))
     except Exception:
-        fragments = split_requests(text)
-        return [parse_deterministic(f, known_names=[t.name for t in session.tasks])
-                for f in fragments]
+        return parse_deterministic(text, known_names=[t.name for t in session.tasks])
 
 
-async def _llm_intents_async(text: str, session: Session, cfg) -> List[Intent]:
+async def _llm_intent_async(text: str, session: Session, cfg) -> Intent:
     from ..llm.router import build_llm_prompt, parse_llm_response
 
     schema = {
@@ -82,8 +80,7 @@ async def _llm_intents_async(text: str, session: Session, cfg) -> List[Intent]:
         **kwargs,
     )
     raw = resp.choices[0].message.content
-    intent = parse_llm_response(raw)
-    return [intent]
+    return parse_llm_response(raw)
 
 
 def _state_critical(session: Session) -> List[str]:
@@ -193,6 +190,11 @@ def _merge_args(intent: Intent) -> Dict[str, Any]:
             "assignee": intent.params.get("assignee", ""),
             "duration_days": intent.params.get("duration_days", 1),
             "predecessors": intent.params.get("predecessors"),
+        }
+    if intent.action == Action.SET_START_DAY:
+        args = {
+            "task": intent.params.get("task") or intent.targets.get("task", ""),
+            "day": int(intent.params.get("day", intent.params.get("value", 1))),
         }
     if intent.action == Action.COMPUTE:
         args = {k: v for k, v in intent.params.items() if v is not None}

@@ -1,0 +1,88 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - heading "Gantt AI Plan" [level=1] [ref=f4e6]
+      - generic [ref=f4e7]: "тестовый-план.xlsx · 13 задач · 92 дн. · критический путь: Инициация → Анализ → Прототипирование → База данных → Разработка фронтенда → Дизайн-система → Интеграция → Нагрузочное тестирование → Подготовка релиза → Релиз"
+    - generic [ref=f4e8]:
+      - button "Загрузить Excel" [ref=f4e9] [cursor=pointer]
+      - button "Экспорт" [ref=f4e10] [cursor=pointer]
+      - button "Отмена" [ref=f4e11] [cursor=pointer]
+      - button "Обновить" [ref=f4e12] [cursor=pointer]
+  - main [ref=f4e13]:
+    - generic [ref=f4e15]:
+      - generic [ref=f4e16]:
+        - generic [ref=f4e17]:
+          - text: Показывать
+          - generic [ref=f4e127]:
+            - button "‹" [disabled] [ref=f4e128]
+            - generic [ref=f4e129]: Неделя 1 из 14 · дни 1–7
+            - button "›" [ref=f4e130] [cursor=pointer]
+        - generic [ref=f4e18]:
+          - button "1 неделя" [active] [ref=f4e19] [cursor=pointer]
+          - button "Недели · 5" [ref=f4e20] [cursor=pointer]
+          - button "Месяц" [ref=f4e21] [cursor=pointer]
+      - generic [ref=f4e22]:
+        - generic [ref=f4e23]:
+          - generic [ref=f4e24]: Задача
+          - generic [ref=f4e25]:
+            - generic "Инициация" [ref=f4e26] [cursor=pointer]
+            - generic [ref=f4e27]: Анна
+          - generic [ref=f4e28]:
+            - generic "Анализ" [ref=f4e29] [cursor=pointer]
+            - generic [ref=f4e30]: Борис
+          - generic [ref=f4e31]:
+            - generic "Прототипирование" [ref=f4e32] [cursor=pointer]
+            - generic [ref=f4e33]: Вика
+          - generic [ref=f4e34]:
+            - generic "Разработка бэкенда" [ref=f4e35] [cursor=pointer]
+            - generic [ref=f4e36]: Борис
+          - generic [ref=f4e37]:
+            - generic "Разработка фронтенда" [ref=f4e38] [cursor=pointer]
+            - generic [ref=f4e39]: Гриша
+          - generic [ref=f4e40]:
+            - generic "Дизайн-система" [ref=f4e41] [cursor=pointer]
+            - generic [ref=f4e42]: Вика
+          - generic [ref=f4e43]:
+            - generic "База данных" [ref=f4e44] [cursor=pointer]
+            - generic [ref=f4e45]: Борис
+          - generic [ref=f4e46]:
+            - generic "Интеграция" [ref=f4e47] [cursor=pointer]
+            - generic [ref=f4e48]: Дарья
+          - generic [ref=f4e49]:
+            - generic "Нагрузочное тестирование" [ref=f4e50] [cursor=pointer]
+            - generic [ref=f4e51]: Елена
+          - generic [ref=f4e52]:
+            - generic "Функциональное тестирование" [ref=f4e53] [cursor=pointer]
+            - generic [ref=f4e54]: Елена
+          - generic [ref=f4e55]:
+            - generic "Документация" [ref=f4e56] [cursor=pointer]
+            - generic [ref=f4e57]: Анна
+          - generic [ref=f4e58]:
+            - generic "Подготовка релиза" [ref=f4e59] [cursor=pointer]
+            - generic [ref=f4e60]: Дарья
+          - generic [ref=f4e61]:
+            - generic "Релиз" [ref=f4e62] [cursor=pointer]
+            - generic [ref=f4e63]: Дарья
+        - generic [ref=f4e65]:
+          - generic [ref=f4e66]:
+            - generic "день 1" [ref=f4e131]: "1"
+            - generic "день 2" [ref=f4e132]: "2"
+            - generic "день 3" [ref=f4e133]: "3"
+            - generic "день 4" [ref=f4e134]: "4"
+            - generic "день 5" [ref=f4e135]: "5"
+            - generic "день 6" [ref=f4e136]: "6"
+            - generic "день 7" [ref=f4e137]: "7"
+          - generic "Инициация · дн. 1–3" [ref=f4e71] [cursor=pointer]: Инициация
+          - generic "Анализ · дн. 4–7" [ref=f4e74] [cursor=pointer]: Анализ
+      - generic [ref=f4e111]:
+        - generic [ref=f4e112]: критический путь
+        - generic [ref=f4e114]: обычная задача
+        - generic [ref=f4e116]:
+          - generic [ref=f4e117]: ↗
+          - text: дольше месяца
+    - generic [ref=f4e120]:
+      - generic [ref=f4e121]: Редактирование плана
+      - generic [ref=f4e122]: "Примеры: «перенеси Разработку бэкенда на 2 дня позже», «сделай Дизайн предшественником Интеграции», «добавь задачу Документация дизайнеру», «удали задачу Релиз», «передай исполнителя на Анну»."
+      - generic [ref=f4e124]:
+        - textbox "Опишите изменение плана на русском…" [ref=f4e125]
+        - button "Отправить" [ref=f4e126] [cursor=pointer]

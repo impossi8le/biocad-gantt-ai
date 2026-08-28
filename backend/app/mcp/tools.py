@@ -294,6 +294,19 @@ def mcp_undo(session: Session) -> dict:
     return {"ok": True, "applied": True, "version": v.id, "state": build_state(session)}
 
 
+def mcp_set_start_day(session: Session, task: str, day: int) -> dict:
+    """Устанавливает задаче конкретный день старта."""
+    t = next((x for x in session.tasks if x.name == task), None)
+    if not t:
+        return {"ok": False, "error": "not_found", "result": f"задача «{task}» не найдена"}
+    day = max(1, int(day))
+    t.start_override = day
+    t.start_day = day
+    t.end_day = day + max(1, t.duration_days) - 1
+    _commit(session, f"set_start_day {task} → {day}")
+    return {"ok": True, "applied": True, "affected": [task], "state": build_state(session)}
+
+
 def mcp_help(session: Session) -> dict:
     return {
         "ok": True,
@@ -313,6 +326,7 @@ TOOL_REGISTRY: Dict[str, Dict[str, Any]] = {
     "reassign": {"fn": mcp_reassign, "need": ["session_id", "targets", "new_assignee"]},
     "update_field": {"fn": mcp_update_field, "need": ["session_id", "task", "field", "value"]},
     "remove_tasks": {"fn": mcp_remove_tasks, "need": ["session_id", "targets"]},
+    "set_start_day": {"fn": mcp_set_start_day, "need": ["session_id", "task", "day"]},
     "compute": {"fn": mcp_compute, "need": ["session_id"], "opts": ["agg", "field", "by"]},
     "export": {"fn": mcp_export, "need": ["session_id"], "opts": ["format"]},
     "undo": {"fn": mcp_undo, "need": ["session_id"]},

@@ -1,0 +1,95 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - heading "Gantt AI Plan" [level=1] [ref=f2e6]
+      - generic [ref=f2e7]: "тестовый-план.xlsx · 12 задач · 90 дн. · критический путь: Инициация → Анализ → Прототипирование → База данных → Разработка фронтенда → Дизайн-система → Интеграция → Нагрузочное тестирование → Подготовка релиза"
+    - generic [ref=f2e8]:
+      - button "Загрузить Excel" [ref=f2e9] [cursor=pointer]
+      - button "Экспорт" [ref=f2e10] [cursor=pointer]
+      - button "Отмена" [ref=f2e11] [cursor=pointer]
+      - button "Обновить" [ref=f2e12] [cursor=pointer]
+  - main [ref=f2e13]:
+    - generic [ref=f2e15]:
+      - generic [ref=f2e16]:
+        - generic [ref=f2e17]: Показывать
+        - generic [ref=f2e18]:
+          - button "1 неделя" [ref=f2e19] [cursor=pointer]
+          - button "Недели · 5" [ref=f2e20] [cursor=pointer]
+          - button "Месяц" [ref=f2e21] [cursor=pointer]
+      - generic [ref=f2e22]:
+        - generic [ref=f2e23]:
+          - generic [ref=f2e24]: Задача
+          - generic [ref=f2e25]:
+            - generic "Инициация" [ref=f2e26] [cursor=pointer]
+            - generic [ref=f2e27]: Анна
+          - generic [ref=f2e28]:
+            - generic "Анализ" [ref=f2e29] [cursor=pointer]
+            - generic [ref=f2e30]: Борис
+          - generic [ref=f2e31]:
+            - generic "Прототипирование" [ref=f2e32] [cursor=pointer]
+            - generic [ref=f2e33]: Вика
+          - generic [ref=f2e34]:
+            - generic "Разработка бэкенда" [ref=f2e35] [cursor=pointer]
+            - generic [ref=f2e36]: Борис
+          - generic [ref=f2e37]:
+            - generic "Разработка фронтенда" [ref=f2e38] [cursor=pointer]
+            - generic [ref=f2e39]: Гриша
+          - generic [ref=f2e40]:
+            - generic "Дизайн-система" [ref=f2e41] [cursor=pointer]
+            - generic [ref=f2e42]: Вика
+          - generic [ref=f2e43]:
+            - generic "База данных" [ref=f2e44] [cursor=pointer]
+            - generic [ref=f2e45]: Борис
+          - generic [ref=f2e46]:
+            - generic "Интеграция" [ref=f2e47] [cursor=pointer]
+            - generic [ref=f2e48]: анна
+          - generic [ref=f2e49]:
+            - generic "Нагрузочное тестирование" [ref=f2e50] [cursor=pointer]
+            - generic [ref=f2e51]: Елена
+          - generic [ref=f2e52]:
+            - generic "Функциональное тестирование" [ref=f2e53] [cursor=pointer]
+            - generic [ref=f2e54]: Елена
+          - generic [ref=f2e55]:
+            - generic "Документация" [ref=f2e56] [cursor=pointer]
+            - generic [ref=f2e57]: Анна
+          - generic [ref=f2e58]:
+            - generic "Подготовка релиза" [ref=f2e59] [cursor=pointer]
+            - generic [ref=f2e60]: Дарья
+        - generic [ref=f2e65]:
+          - generic [ref=f2e66]:
+            - generic "дни 1–31" [ref=f2e67]: янв
+            - generic "дни 32–61" [ref=f2e68]: фев
+            - generic "дни 62–90" [ref=f2e140]: мар
+          - generic "Инициация · дн. 1–3" [ref=f2e71] [cursor=pointer]: Инициация
+          - generic "Анализ · дн. 4–7" [ref=f2e74] [cursor=pointer]: Анализ
+          - generic "Прототипирование · дн. 8–12" [ref=f2e77] [cursor=pointer]: Прототипирование
+          - generic "Разработка бэкенда · дн. 8–19" [ref=f2e80] [cursor=pointer]: Разработка бэкенда
+          - generic "Разработка фронтенда · дн. 13–22" [ref=f2e83] [cursor=pointer]: Разработка фронтенда
+          - generic "Дизайн-система · дн. 13–57 · >1 мес" [ref=f2e86] [cursor=pointer]:
+            - generic [ref=f2e87]: Дизайн-система
+            - generic "дольше месяца" [ref=f2e88]: ↗
+          - generic "База данных · дн. 8–15" [ref=f2e90] [cursor=pointer]: База данных
+          - generic "Интеграция · дн. 23–27" [ref=f2e93] [cursor=pointer]: Интеграция
+          - generic "Нагрузочное тестирование · дн. 28–87 · >1 мес" [ref=f2e96] [cursor=pointer]:
+            - generic [ref=f2e97]: Нагрузочное тестирование
+            - generic "дольше месяца" [ref=f2e98]: ↗
+          - generic "Функциональное тестирование · дн. 28–33" [ref=f2e100] [cursor=pointer]: Функциональное тестирование
+          - generic "Документация · дн. 34–37" [ref=f2e103] [cursor=pointer]: Документация
+          - generic "Подготовка релиза · дн. 88–90" [ref=f2e106] [cursor=pointer]: Подготовка релиза
+      - generic [ref=f2e111]:
+        - generic [ref=f2e112]: критический путь
+        - generic [ref=f2e114]: обычная задача
+        - generic [ref=f2e116]:
+          - generic [ref=f2e117]: ↗
+          - text: дольше месяца
+    - generic [ref=f2e120]:
+      - generic [ref=f2e121]: Редактирование плананабирает…
+      - generic [ref=f2e122]:
+        - generic [ref=f2e123]: "Примеры: «перенеси Разработку бэкенда на 2 дня позже», «сделай Дизайн предшественником Интеграции», «добавь задачу Документация дизайнеру», «удали задачу Релиз», «передай исполнителя на Анну»."
+        - generic [ref=f2e129]: перенеси задачу Релиз на 3 дня позже
+        - generic [ref=f2e130]: "Перенос задач: Релиз"
+        - generic [ref=f2e131]: удали задачу Релиз
+        - generic [ref=f2e132]: …
+      - generic [ref=f2e124]:
+        - textbox "Опишите изменение плана на русском…" [ref=f2e125]
+        - button "Отправить" [disabled] [ref=f2e126]

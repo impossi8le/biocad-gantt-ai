@@ -24,6 +24,7 @@ class Action(str, Enum):
     REASSIGN = "reassign"
     UPDATE_FIELD = "update_field"
     REMOVE_TASKS = "remove_tasks"
+    SET_START_DAY = "set_start_day"
     COMPUTE = "compute"
     EXPORT = "export"
     UNDO = "undo"
