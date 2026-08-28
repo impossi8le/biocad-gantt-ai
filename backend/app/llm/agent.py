@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from ..config import llm_enabled, get_settings
@@ -29,13 +30,32 @@ from .router import parse_deterministic, split_requests
 def resolve_intents(text: str, session: Session) -> List[Intent]:
     """Строит список Intent-ов. Разбивает составной запрос на шаги.
 
-    Всегда разбиваем на фрагменты, затем каждый фрагмент парсим отдельно.
+    Разрешает местоимения («её», «его», «ей») через контекст предыдущих шагов.
     """
     fragments = split_requests(text)
-    if not llm_enabled():
-        return [parse_deterministic(f, known_names=[t.name for t in session.tasks])
-                for f in fragments]
-    return [_llm_intent(f, session) for f in fragments]
+    known_names = [t.name for t in session.tasks]
+    last_name = ""
+
+    def _resolve(f: str) -> Intent:
+        nonlocal last_name
+        resolved = f
+        for pronoun in ("её", "ее", "его", "ей", "им", "нему"):
+            if pronoun in resolved.lower() and last_name:
+                resolved = re.sub(r'\b' + pronoun + r'\b', last_name, resolved, flags=re.IGNORECASE)
+        intent = parse_deterministic(resolved, known_names=known_names) if not llm_enabled() \
+            else _llm_intent(resolved, session)
+        if intent.action == Action.ADD_TASK and intent.params.get("name"):
+            last_name = intent.params["name"]
+        elif intent.action == Action.SET_START_DAY and not intent.params.get("task"):
+            intent.params["task"] = last_name
+        elif intent.action in (Action.SHIFT_TASKS, Action.REASSIGN, Action.UPDATE_FIELD, Action.REMOVE_TASKS) and last_name:
+            targets = intent.targets.get("tasks", [])
+            if not targets or targets == "all":
+                if last_name not in targets:
+                    intent.targets["tasks"] = [last_name]
+        return intent
+
+    return [_resolve(f) for f in fragments]
 
 
 def _llm_intent(text: str, session: Session) -> Intent:
