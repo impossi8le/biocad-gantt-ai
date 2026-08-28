@@ -140,7 +140,7 @@ backend/
     llm/       intents, router, agent
     api/       routes (REST+SSE), state
     seed.py, main.py, config.py
-    tests/     pytest (28 тестов)
+    tests/     pytest (40 тестов)
   requirements.txt, Dockerfile
 frontend/
   src/components/  GanttChart, TaskModal, ChatPanel, ConfirmModal, Toolbar
@@ -193,7 +193,7 @@ docker-compose.yml, Dockerfile.frontend, nginx.conf
   (Claude Code) в качестве ассистента-разработчика.
 - **DevOps**: Docker Compose, nginx, деплой на VM (95.142.46.44), **GitHub
   Actions CI/CD** (pytest + SSH-deploy на каждый push) настроены ассистентом.
-- **QA**: автотесты (28 pytest), а также **E2E через Playwright** — ассистент
+- **QA**: автотесты (40 pytest), а также **E2E через Playwright** — ассистент
   заходил в живое приложение, общался с чатом, проверял загрузку/экспорт Excel,
   смену исполнителей, переносы, удаления и **сохранение после перезагрузки**.
 
