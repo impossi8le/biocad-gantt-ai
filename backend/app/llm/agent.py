@@ -55,7 +55,22 @@ def resolve_intents(text: str, session: Session) -> List[Intent]:
                     intent.targets["tasks"] = [last_name]
         return intent
 
-    return [_resolve(f) for f in fragments]
+    return _deduplicate_intents([_resolve(f) for f in fragments])
+
+
+def _deduplicate_intents(intents: List[Intent]) -> List[Intent]:
+    """Удаляет подряд идущие одинаковые действия (LLM галлюцинирует дубликаты REASSIGN)."""
+    if not intents:
+        return intents
+    result = [intents[0]]
+    for i in range(1, len(intents)):
+        prev, cur = intents[i - 1], intents[i]
+        if prev.action == cur.action:
+            # REASSIGN подряд: пропускаем дубликат
+            if cur.action == Action.REASSIGN:
+                continue
+        result.append(cur)
+    return result
 
 
 def _llm_intent(text: str, session: Session) -> Intent:
@@ -264,6 +279,7 @@ def _label(action: Action) -> str:
         Action.REASSIGN: "Перераспределение исполнителей",
         Action.UPDATE_FIELD: "Обновление задач",
         Action.REMOVE_TASKS: "Удаление задач",
+        Action.SET_START_DAY: "Установка дня старта",
         Action.COMPUTE: "Вычисления",
         Action.EXPORT: "Экспорт",
         Action.UNDO: "Откат",
