@@ -49,5 +49,5 @@ jobs:
             cd /opt/biocad-gantt-ai
             git pull origin master
             echo "LLM_API_KEY=${LLM_API_KEY}" > .env
-            docker compose build --no-cache backend && docker compose up -d
+            docker compose build --no-cache backend frontend && docker compose up -d
           "
