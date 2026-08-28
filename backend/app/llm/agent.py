@@ -177,6 +177,8 @@ async def apply_intent_events(
 
         # 4) стриминг наррации
         narration = _compose_narration(intent, result)
+        if idx > 0:
+            yield {"type": "delta", "text": "\n\n"}
         async for chunk in _stream_narration(narration, enabled=bool(llm_enabled())):
             yield {"type": "delta", "text": chunk}
 
@@ -242,6 +244,7 @@ def _compose_narration(intent: Intent, result: Any) -> str:
         Action.REASSIGN: "перераспределил исполнителей",
         Action.UPDATE_FIELD: "обновил задачи",
         Action.REMOVE_TASKS: "удалил задачи",
+        Action.SET_START_DAY: "установил день старта",
         Action.COMPUTE: "выполнил вычисления",
         Action.EXPORT: "подготовил экспорт",
         Action.UNDO: "откатил последнее изменение",
